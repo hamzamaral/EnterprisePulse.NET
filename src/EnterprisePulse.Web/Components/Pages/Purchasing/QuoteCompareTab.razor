@@ -1,0 +1,49 @@
+@inherits AppPage
+
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_row["quotes"]!.AsArray().Count == 0)
+{
+    <MudText Color="Color.Secondary">@T("Bu talebe henüz teklif girilmedi.", "No quotes for this request yet.")</MudText>
+}
+else
+{
+    <MudText Class="mb-2">@T("En uygun açık teklif", "Best open quote"): <b>@(_row["bestQuoteId"] == null ? "—" : _row["quotes"]!.AsArray().FirstOrDefault(q => q!["id"]!.ToString() == _row["bestQuoteId"]!.ToString())?["number"]?.ToString())</b></MudText>
+    <div style="overflow-x:auto">
+        <table class="ep-doc-table">
+            <thead>
+                <tr>
+                    <th>@T("Kalem", "Item")</th>
+                    @foreach (var q in _row["quotes"]!.AsArray())
+                    {
+                        <th>
+                            <MudLink Href="@($"/r/supplier-quotes/{q!["id"]}")">@q["number"]</MudLink>
+                            <div class="ep-muted ep-small">@q["partnerTitle"] · @Fmt.Money(AssetUi.Dec(q["grandTotalBase"]), _row["baseCurrency"]?.ToString(), Locale)</div>
+                            @if (q["id"]!.ToString() == _row["bestQuoteId"]?.ToString()) { <MudChip T="string" Size="Size.Small" Color="Color.Success">@T("En uygun", "Best")</MudChip> }
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in _row["lines"]!.AsArray())
+                {
+                    <tr>
+                        <td>@line!["description"] <div class="ep-muted ep-small">@line["quantity"] @line["unitCode"]</div></td>
+                        @foreach (var q in _row["quotes"]!.AsArray())
+                        {
+                            var price = q!["prices"]!.AsArray().FirstOrDefault(p => p!["requestLineId"]!.ToString() == line["id"]!.ToString());
+                            <td>@(price == null ? "—" : Fmt.Money(AssetUi.Dec(price["netUnitPriceBase"]), _row["baseCurrency"]?.ToString(), Locale))</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private JsonObject? _row;
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/purchasing/requests/{Record["id"]}/compare"));
+}

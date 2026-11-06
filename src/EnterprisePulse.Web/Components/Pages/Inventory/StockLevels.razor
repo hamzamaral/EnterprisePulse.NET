@@ -1,0 +1,97 @@
+@page "/inventory"
+@inherits AppPage
+
+<PageTitle>@T("Stok Durumu", "Stock levels") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Stok Durumu", "Stock levels")</MudText>
+    @if (Session.Has("inventory:move"))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/inventory/movements/new">@T("Yeni hareket", "New movement")</MudButton>
+    }
+</div>
+
+@if (_summary != null)
+{
+    <MudGrid Class="mb-3">
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Kalem", "Items")</div><MudText Typo="Typo.h6">@_summary["itemCount"]</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Minimum altı", "Below minimum")</div><MudText Typo="Typo.h6" Color="@(_low > 0 ? Color.Warning : Color.Default)">@_low</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Stok değeri", "Stock value")</div><MudText Typo="Typo.h6">@Fmt.Money(AssetUi.Dec(_summary["stockValue"]), Session.Company?.BaseCurrency, Locale)</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Depo", "Warehouses")</div><MudText Typo="Typo.h6">@_summary["warehouseCount"]</MudText></MudPaper></MudItem>
+    </MudGrid>
+}
+
+<MudPaper Outlined="true" Class="pa-3 mb-3">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="4"><MudTextField T="string" Value="@_search" ValueChanged="OnSearch" Label="@L("search")" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" DebounceInterval="300" /></MudItem>
+        <MudItem xs="12" sm="3"><RefPicker Resource="warehouses" Value="@_warehouseId" ValueChanged="LoadWarehouse" Label="@T("Depo", "Warehouse")" /></MudItem>
+        <MudItem xs="12" sm="3"><RefPicker Resource="product-categories" Value="@_categoryId" ValueChanged="LoadCategory" Label="@T("Kategori", "Category")" /></MudItem>
+        <MudItem xs="12" sm="2"><MudSwitch T="bool" Value="_lowOnly" ValueChanged="OnLow" Label="@T("Kritik", "Low")" Color="Color.Warning" /></MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTable Items="_rows" Dense="true" Hover="true" Loading="_loading" Elevation="1" OnRowClick="Open" Class="ep-clickable" T="JsonObject">
+    <HeaderContent>
+        <MudTh><MudTableSortLabel SortLabel="sku" T="JsonObject">SKU</MudTableSortLabel></MudTh>
+        <MudTh>@T("Ürün", "Product")</MudTh>
+        <MudTh>@T("Kategori", "Category")</MudTh>
+        <MudTh>@T("Takip", "Tracking")</MudTh>
+        <MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh>
+        <MudTh Style="text-align:right">@T("Minimum", "Minimum")</MudTh>
+        <MudTh Style="text-align:right">@T("Değer", "Value")</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><span class="ep-mono">@context["sku"]</span></MudTd>
+        <MudTd>@context["productName"] <small class="ep-muted">@context["variantName"]</small></MudTd>
+        <MudTd>@context["categoryName"]</MudTd>
+        <MudTd>@Meta.EnumLabel("TrackingType", context["trackingType"]?.ToString(), Locale)</MudTd>
+        <MudTd Style="text-align:right">
+            @AssetUi.Dec(context["quantity"]).ToString("0.###") @context["unitCode"]
+            @if (HrUi.Bool(context["lowStock"])) { <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Color="Color.Warning" Size="Size.Small" /> }
+        </MudTd>
+        <MudTd Style="text-align:right">@AssetUi.Dec(context["minStock"]).ToString("0.###")</MudTd>
+        <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["stockValue"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+    </RowTemplate>
+    <PagerContent><MudTablePager /></PagerContent>
+    <NoRecordsContent><MudText Class="pa-4">@L("noRecords")</MudText></NoRecordsContent>
+</MudTable>
+
+@code {
+    private JsonObject? _summary;
+    private List<JsonObject> _rows = [];
+    private bool _loading = true;
+    private string? _search;
+    private string? _warehouseId;
+    private string? _categoryId;
+    private bool _lowOnly;
+    private int _low;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = new Uri(Nav.Uri).Query;
+        if (query.Contains("low=1")) _lowOnly = true;
+        await Load();
+    }
+
+    private Task OnSearch(string? value) { _search = value; return Load(); }
+    private Task OnLow(bool value) { _lowOnly = value; return Load(); }
+    private Task LoadWarehouse(string? id) { _warehouseId = id; return Load(); }
+    private Task LoadCategory(string? id) { _categoryId = id; return Load(); }
+
+    private async Task Load()
+    {
+        _loading = true;
+        var q = $"search={Uri.EscapeDataString(_search ?? "")}&lowStock={_lowOnly.ToString().ToLowerInvariant()}&pageSize=200";
+        if (_warehouseId != null) q += $"&warehouseId={_warehouseId}";
+        if (_categoryId != null) q += $"&categoryId={_categoryId}";
+        await Run(async () =>
+        {
+            _summary = await Api.GetJsonAsync("/api/stock/summary");
+            _low = HrUi.Int(_summary["lowStockCount"]);
+            var page = await Api.GetJsonAsync($"/api/stock/levels?{q}");
+            _rows = page["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
+        });
+        _loading = false;
+    }
+
+    private void Open(TableRowClickEventArgs<JsonObject> e) => Nav.NavigateTo($"/r/products/{e.Item!["productId"]}");
+}

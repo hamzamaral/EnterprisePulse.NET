@@ -83,6 +83,15 @@ public static class ResourceEndpoints
         });
     }
 
-    private static void Require(MetadataStore meta, CurrentUser ctx, string resource, string action) =>
+    private static void Require(MetadataStore meta, CurrentUser ctx, string resource, string action)
+    {
+        // Requesters open their own requests from the list; the hook hides everyone else's.
+        if (resource == "purchase-requests" && action == "read")
+        {
+            if (!ctx.HasAny("purchasing:read", "purchasing:create", "workflow:start"))
+                throw new ForbiddenAppException("Missing permission: purchasing:read");
+            return;
+        }
         ctx.Require(meta.Get(resource).PermissionFor(action, meta.Registry));
+    }
 }

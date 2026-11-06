@@ -1,0 +1,42 @@
+@inherits AppPage
+
+<MudTable Items="_rows" Dense="true" Hover="true" Loading="_loading" Elevation="0" Outlined="true" Class="ep-clickable" OnRowClick="Open" T="JsonObject">
+    <HeaderContent>
+        <MudTh>@T("Tarih", "Date")</MudTh><MudTh>@T("Hareket", "Movement")</MudTh><MudTh>@T("Tür", "Type")</MudTh>
+        <MudTh>@T("Depo", "Warehouse")</MudTh><MudTh>SKU</MudTh><MudTh>@T("Lot", "Lot")</MudTh>
+        <MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh><MudTh Style="text-align:right">@T("Bakiye", "Balance")</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@AssetUi.Day(context["movementDate"])</MudTd>
+        <MudTd class="ep-mono">@context["movementNumber"]</MudTd>
+        <MudTd>@Meta.EnumLabel("StockMovementType", context["movementType"]?.ToString(), Locale)</MudTd>
+        <MudTd>@context["warehouseName"]</MudTd>
+        <MudTd>@context["sku"]</MudTd>
+        <MudTd>@context["lotNo"]</MudTd>
+        <MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("+0.###;-0.###;0")</MudTd>
+        <MudTd Style="text-align:right">@AssetUi.Dec(context["balanceAfter"]).ToString("0.###")</MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4">@L("noRecords")</MudText></NoRecordsContent>
+</MudTable>
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<JsonObject> _rows = [];
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await Run(async () =>
+        {
+            var page = await Api.GetJsonAsync($"/api/stock/ledger?productId={Record["id"]}&pageSize=100");
+            _rows = page["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
+        });
+        _loading = false;
+    }
+
+    private void Open(TableRowClickEventArgs<JsonObject> e) => Nav.NavigateTo($"/inventory/movements/{e.Item!["movementId"]}");
+}

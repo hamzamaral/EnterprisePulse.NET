@@ -87,6 +87,7 @@ public static partial class ResourceViews
         Platform();
         Hr();
         Assets();
+        Inventory();
     }
 
     static void Assets()
@@ -223,5 +224,110 @@ public static partial class ResourceViews
             v.Actions.Add(new ResourceAction { Label = "Süreci aç", LabelEn = "Open", Icon = Icons.Material.Filled.OpenInNew, Run = c => { c.Nav.NavigateTo($"/workflow/instances/{c.Id}"); return Task.CompletedTask; } });
         });
         Configure("number-sequences", v => v.HideCreate = v.HideDelete = true);
+    }
+
+    static void Inventory()
+    {
+        Configure("products", v =>
+        {
+            v.Columns = ["code", "name", "categoryId", "unitId", "type", "trackingType", "salePrice", "isActive"];
+            v.FilterFields = ["type", "trackingType", "categoryId", "isActive"];
+            v.Links.Add(new HeaderLink("Stok durumu", "Stock levels", "/inventory", Icons.Material.Filled.Warehouse));
+            v.Tabs.Add(new ResourceTab { Title = "Varyantlar", Component = typeof(Components.Pages.Inventory.ProductVariantsTab) });
+            v.Tabs.Add(new ResourceTab { Title = "Stok", Component = typeof(Components.Pages.Inventory.ProductStockTab) });
+            v.Tabs.Add(new ResourceTab { Title = "Stok kartı", Component = typeof(Components.Pages.Inventory.ProductLedgerTab) });
+        });
+        Configure("product-categories", v =>
+        {
+            v.Columns = ["code", "name", "parentId", "isActive"];
+            v.Links.Add(new HeaderLink("Depolar", "Warehouses", "/r/warehouses", Icons.Material.Filled.Warehouse));
+        });
+        Configure("warehouses", v =>
+        {
+            v.Columns = ["code", "name", "branchId", "address", "isActive"];
+            v.Links.Add(new HeaderLink("Kategoriler", "Categories", "/r/product-categories", Icons.Material.Filled.Category));
+            v.Tabs.Add(new ResourceTab { Title = "Stok değeri", Component = typeof(Components.Pages.Inventory.WarehouseStockTab) });
+        });
+        Configure("stock-movements", v =>
+        {
+            v.Columns = ["number", "type", "movementDate", "sourceWarehouseId", "targetWarehouseId", "reference", "createdAt"];
+            v.FilterFields = ["type", "movementDate", "sourceWarehouseId", "targetWarehouseId"];
+            v.CreateHref = "/inventory/movements/new";
+            v.DetailHref = "/inventory/movements/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("stock-counts", v =>
+        {
+            v.Columns = ["number", "warehouseId", "countDate", "status", "createdById", "completedAt"];
+            v.FilterFields = ["status", "warehouseId", "countDate"];
+            v.CreateDialog = typeof(Components.Pages.Inventory.StockCountDialog);
+            v.DetailHref = "/inventory/counts/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("business-partners", v =>
+        {
+            v.Columns = ["code", "title", "type", "city", "phone", "paymentTermDays", "currencyCode", "isActive"];
+            v.FilterFields = ["type", "city", "isActive"];
+            v.Tabs.Add(new ResourceTab { Title = "Ekstre", Component = typeof(Components.Pages.Partners.PartnerStatementTab) });
+        });
+        Configure("purchase-requests", v =>
+        {
+            v.Columns = ["number", "title", "requestDate", "neededBy", "status", "requestedById"];
+            v.FilterFields = ["status", "requestDate", "departmentId"];
+            v.CreateHref = "/purchasing/requests/new";
+            v.HideEdit = v.HideDelete = true;
+            v.HiddenChildren = ["purchase-request-lines"];
+            v.WorkflowEntity = "PurchaseRequest";
+            v.Tabs.Add(new ResourceTab { Title = "Satırlar", Component = typeof(Components.Pages.Purchasing.RequestLinesTab) });
+            v.Tabs.Add(new ResourceTab { Title = "Teklif karşılaştırma", Component = typeof(Components.Pages.Purchasing.QuoteCompareTab), Permission = "purchasing:read" });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "İptal et", LabelEn = "Cancel", Icon = Icons.Material.Filled.Cancel, Color = Color.Error,
+                Visible = ResourceAction.StatusIn("PENDING", "APPROVED"), Endpoint = "/api/purchasing/requests/{id}/cancel", Prompt = "Gerekçe",
+            });
+        });
+        Configure("supplier-quotes", v =>
+        {
+            v.Columns = ["number", "partnerId", "requestId", "quoteDate", "validUntil", "currencyCode", "grandTotal", "status"];
+            v.FilterFields = ["status", "partnerId", "quoteDate"];
+            v.CreateHref = "/purchasing/quotes/new";
+            v.HideEdit = v.HideDelete = true;
+            v.HiddenChildren = ["supplier-quote-lines"];
+            v.Tabs.Add(new ResourceTab { Title = "Satırlar", Component = typeof(Components.Pages.Purchasing.QuoteLinesTab) });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "Kabul et", LabelEn = "Accept", Icon = Icons.Material.Filled.Check, Permission = "purchasing:create",
+                Visible = ResourceAction.StatusIn("OPEN"), Run = Components.Pages.Purchasing.AcceptQuoteDialog.Open,
+            });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "Reddet", LabelEn = "Reject", Icon = Icons.Material.Filled.Close, Color = Color.Error, Permission = "purchasing:update",
+                Visible = ResourceAction.StatusIn("OPEN"), Endpoint = "/api/purchasing/quotes/{id}/reject", Confirm = "Teklif reddedilecek.",
+            });
+        });
+        Configure("purchase-orders", v =>
+        {
+            v.Columns = ["number", "partnerId", "orderDate", "expectedDate", "warehouseId", "currencyCode", "grandTotal", "status"];
+            v.FilterFields = ["status", "partnerId", "warehouseId", "orderDate"];
+            v.CreateHref = "/purchasing/orders/new";
+            v.DetailHref = "/purchasing/orders/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("goods-receipts", v =>
+        {
+            v.Columns = ["number", "orderId", "partnerId", "warehouseId", "receiptDate", "deliveryNoteNo"];
+            v.FilterFields = ["partnerId", "warehouseId", "receiptDate"];
+            v.CreateHref = "/purchasing/receipts/new";
+            v.DetailHref = "/purchasing/receipts/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("purchase-invoices", v =>
+        {
+            v.Columns = ["number", "supplierInvoiceNo", "partnerId", "invoiceDate", "dueDate", "grandTotal", "paymentStatus", "status"];
+            v.FilterFields = ["status", "paymentStatus", "partnerId", "invoiceDate"];
+            v.CreateHref = "/purchasing/invoices/new";
+            v.DetailHref = "/purchasing/invoices/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
     }
 }

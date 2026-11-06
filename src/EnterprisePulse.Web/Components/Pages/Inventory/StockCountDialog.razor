@@ -1,0 +1,41 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Yeni stok sayımı", "New stock count")</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@T("Depodaki stoksuz olmayan ürünler (seri takipli olanlar hariç) listeye alınır.", "Items with stock in the warehouse are snapshotted, except serial-tracked ones.")</MudText>
+        <RefPicker Resource="warehouses" @bind-Value="_warehouseId" Label="@T("Depo", "Warehouse")" Required="true" />
+        <RefPicker Resource="product-categories" @bind-Value="_categoryId" Label="@T("Kategori (isteğe bağlı)", "Category (optional)")" />
+        <MudDatePicker @bind-Date="_date" Label="@T("Sayım tarihi", "Count date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" />
+        <MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy || string.IsNullOrEmpty(_warehouseId)" OnClick="Save">@T("Sayımı başlat", "Start count")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    private string? _warehouseId;
+    private string? _categoryId;
+    private DateTime? _date = DateTime.Today;
+    private string? _notes;
+    private bool _busy;
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/stock/counts", new
+        {
+            warehouseId = _warehouseId, categoryId = _categoryId, countDate = AssetUi.Iso(_date), notes = _notes,
+        }));
+        _busy = false;
+        if (ok && created != null)
+        {
+            Nav.NavigateTo($"/inventory/counts/{created["id"]}");
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+    }
+}

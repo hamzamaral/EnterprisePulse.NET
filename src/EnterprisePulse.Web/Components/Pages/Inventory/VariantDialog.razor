@@ -1,0 +1,70 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@(Existing ? T("Varyant", "Variant") : T("Yeni varyant", "New variant"))</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_sku" Label="SKU" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="@T("Ad", "Name")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_barcode" Label="@T("Barkod", "Barcode")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_min" Label="@T("Minimum stok", "Minimum stock")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_attrs" Label="@T("Özellikler (Renk=Siyah, Beden=M)", "Attributes (Color=Black)")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            @if (Existing) { <MudItem xs="12"><MudSwitch @bind-Value="_active" Label="@T("Aktif", "Active")" Color="Color.Primary" /></MudItem> }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || string.IsNullOrWhiteSpace(_sku)">@L("save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string ProductId { get; set; } = "";
+    [Parameter] public JsonObject? Row { get; set; }
+
+    private bool Existing => Row != null;
+    private string? _sku;
+    private string? _name;
+    private string? _barcode;
+    private decimal _min;
+    private string? _attrs;
+    private bool _active = true;
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        if (Row == null) return;
+        _sku = Row["sku"]?.ToString();
+        _name = Row["name"]?.ToString();
+        _barcode = Row["barcode"]?.ToString();
+        _min = AssetUi.Dec(Row["minStock"]);
+        _active = HrUi.Bool(Row["isActive"]);
+        if (Row["attributes"] is JsonObject attrs) _attrs = string.Join(", ", attrs.Select(kv => $"{kv.Key}={kv.Value}"));
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        var attributes = new Dictionary<string, string>();
+        foreach (var part in (_attrs ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 2) attributes[pair[0].Trim()] = pair[1].Trim();
+        }
+        var body = new { sku = _sku, name = _name, barcode = _barcode, minStock = _min, isActive = _active, attributes };
+        var url = $"/api/stock/products/{ProductId}/variants";
+        var ok = Existing
+            ? await Run(() => Api.PatchAsync<JsonObject>($"{url}/{Row!["id"]}", body))
+            : await Run(() => Api.PostAsync<JsonObject>(url, body));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    public static async Task<bool> OpenAsync(IDialogService dialogs, string productId, JsonObject? row)
+    {
+        var dialog = await dialogs.ShowAsync<VariantDialog>(null, new DialogParameters<VariantDialog> { { x => x.ProductId, productId }, { x => x.Row, row } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        return await dialog.Result is { Canceled: false };
+    }
+}

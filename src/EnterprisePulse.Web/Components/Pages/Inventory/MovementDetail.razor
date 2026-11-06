@@ -1,0 +1,53 @@
+@page "/inventory/movements/{Id:guid}"
+@inherits AppPage
+
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> return; }
+<PageTitle>@_row["number"] · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/stock-movements" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@_row["number"]</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Info">@Meta.EnumLabel("StockMovementType", _row["type"]?.ToString(), Locale)</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@AssetUi.Day(_row["movementDate"]) · @Warehouses</MudText>
+    </div>
+</div>
+<MudPaper Outlined="true" Class="pa-4 mb-3">
+    <MudText>@T("Referans", "Reference"): @AssetUi.Text(_row["reference"])</MudText>
+    <MudText>@T("Not", "Notes"): @AssetUi.Text(_row["notes"])</MudText>
+    <MudText>@T("İşleyen", "Posted by"): @_row["createdByName"] · @AssetUi.Stamp(_row["createdAt"])</MudText>
+    @if (_row["stockCountId"] != null)
+    {
+        <MudLink Href="@($"/inventory/counts/{_row["stockCountId"]}")">@T("Sayım", "Count") @_row["stockCountNumber"]</MudLink>
+    }
+    @if (_row["goodsReceiptId"] != null)
+    {
+        <MudLink Href="@($"/purchasing/receipts/{_row["goodsReceiptId"]}")">@T("Mal kabul", "Receipt") @_row["goodsReceiptNumber"]</MudLink>
+    }
+</MudPaper>
+<MudTable Items='@_row["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="1">
+    <HeaderContent>
+        <MudTh>SKU</MudTh><MudTh>@T("Ürün", "Product")</MudTh><MudTh>@T("Lot / seri", "Lot / serial")</MudTh>
+        <MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh><MudTh Style="text-align:right">@T("Maliyet", "Cost")</MudTh><MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><MudLink Href="@($"/r/products/{context["productId"]}")" Class="ep-mono">@context["sku"]</MudLink></MudTd>
+        <MudTd>@context["productName"] <small class="ep-muted">@context["variantName"]</small></MudTd>
+        <MudTd>
+            @context["lotNo"]
+            @if (context["serialNos"] is JsonArray serials && serials.Count > 0) { <span class="ep-mono">@string.Join(", ", serials.Select(s => s!.ToString()))</span> }
+        </MudTd>
+        <MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###") @context["unitCode"]</MudTd>
+        <MudTd Style="text-align:right">@AssetUi.Dec(context["unitCost"]).ToString("0.####")</MudTd>
+        <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["lineValue"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Warehouses => string.Join(" → ", new[] { _row!["sourceWarehouseName"]?.ToString(), _row["targetWarehouseName"]?.ToString() }.Where(s => !string.IsNullOrEmpty(s)));
+
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/stock/movements/{Id}"));
+}

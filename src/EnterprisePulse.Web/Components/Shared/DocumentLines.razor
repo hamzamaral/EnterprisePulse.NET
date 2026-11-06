@@ -1,0 +1,126 @@
+@inherits AppPage
+
+<MudTable Items="Lines" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.Sm">
+    <HeaderContent>
+        <MudTh style="min-width:220px">@T("Ürün", "Item")</MudTh>
+        <MudTh>@T("Açıklama", "Description")</MudTh>
+        <MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh>
+        @if (ShowPrice)
+        {
+            <MudTh Style="text-align:right">@T("Birim fiyat", "Unit price")</MudTh>
+            <MudTh Style="text-align:right">@T("İskonto %", "Disc. %")</MudTh>
+            <MudTh Style="text-align:right">@T("KDV %", "VAT %")</MudTh>
+            <MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh>
+        }
+        @if (ShowLot)
+        {
+            <MudTh>@T("Lot", "Lot")</MudTh>
+            <MudTh>@T("SKT", "Expiry")</MudTh>
+            <MudTh>@T("Seri no", "Serials")</MudTh>
+        }
+        @if (Editable)
+        {
+            <MudTh />
+        }
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>
+            @if (Editable && context.OrderLineId == null)
+            {
+                <ItemPicker Value="context.VariantId" InitialLabel="@(context.Sku ?? context.Description)" IncludeServices="IncludeServices" ValueChanged="item => Pick(context, item)" />
+            }
+            else
+            {
+                <span class="ep-mono">@context.Sku</span>
+            }
+        </MudTd>
+        <MudTd>
+            @if (Editable)
+            {
+                <MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Variant="Variant.Text" />
+            }
+            else
+            {
+                @context.Description
+            }
+        </MudTd>
+        <MudTd Style="text-align:right">
+            @if (Editable)
+            {
+                <MudNumericField T="decimal" @bind-Value="context.Quantity" Margin="Margin.Dense" Variant="Variant.Text" Min="0.001m" Max="@(context.MaxQuantity ?? 999999m)" />
+            }
+            else
+            {
+                @context.Quantity.ToString("0.###")
+            }
+        </MudTd>
+        @if (ShowPrice)
+        {
+            <MudTd Style="text-align:right">
+                @if (Editable)
+                {
+                    <MudNumericField T="decimal" @bind-Value="context.UnitPrice" Margin="Margin.Dense" Variant="Variant.Text" Min="0" />
+                }
+                else
+                {
+                    @Fmt.Money(context.UnitPrice, null, Locale)
+                }
+            </MudTd>
+            <MudTd Style="text-align:right">
+                @if (Editable) { <MudNumericField T="decimal" @bind-Value="context.DiscountRate" Margin="Margin.Dense" Variant="Variant.Text" Min="0" Max="100" /> } else { @context.DiscountRate.ToString("0.##") }
+            </MudTd>
+            <MudTd Style="text-align:right">
+                @if (Editable) { <MudNumericField T="decimal" @bind-Value="context.VatRate" Margin="Margin.Dense" Variant="Variant.Text" Min="0" Max="100" /> } else { @context.VatRate.ToString("0.##") }
+            </MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(context.Total, null, Locale)</MudTd>
+        }
+        @if (ShowLot)
+        {
+            <MudTd>@if (Editable) { <MudTextField @bind-Value="context.LotNo" Margin="Margin.Dense" Variant="Variant.Text" /> } else { @context.LotNo }</MudTd>
+            <MudTd>@if (Editable) { <MudDatePicker @bind-Date="context.Expiry" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /> }</MudTd>
+            <MudTd>@if (Editable) { <MudTextField @bind-Value="context.Serials" Margin="Margin.Dense" Variant="Variant.Text" Placeholder="@T("virgülle", "comma separated")" /> } else { @context.Serials }</MudTd>
+        }
+        @if (Editable)
+        {
+            <MudTd><MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => Lines.Remove(context)" /></MudTd>
+        }
+    </RowTemplate>
+    <FooterContent>
+        @if (ShowPrice)
+        {
+            var t = TradeTotals.Of(Lines);
+            <MudTd colspan="@(Editable ? 8 : 7)" Style="text-align:right">
+                <div>@T("Ara toplam", "Subtotal"): <b>@Fmt.Money(t.Subtotal, Currency, Locale)</b></div>
+                <div>@T("İskonto", "Discount"): @Fmt.Money(t.Discount, Currency, Locale)</div>
+                <div>@T("KDV", "VAT"): @Fmt.Money(t.Vat, Currency, Locale)</div>
+                <div>@T("Genel toplam", "Grand total"): <b>@Fmt.Money(t.Grand, Currency, Locale)</b></div>
+            </MudTd>
+        }
+    </FooterContent>
+</MudTable>
+@if (Editable && AllowAdd)
+{
+    <MudButton Class="mt-2" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="Add">@T("Satır ekle", "Add line")</MudButton>
+}
+
+@code {
+    [Parameter, EditorRequired] public List<DocLine> Lines { get; set; } = [];
+    [Parameter] public bool Editable { get; set; } = true;
+    [Parameter] public bool AllowAdd { get; set; } = true;
+    [Parameter] public bool ShowPrice { get; set; } = true;
+    [Parameter] public bool ShowLot { get; set; }
+    [Parameter] public bool IncludeServices { get; set; }
+    [Parameter] public string? Currency { get; set; }
+
+    private void Add() => Lines.Add(new DocLine());
+
+    private static void Pick(DocLine line, ItemOption? item)
+    {
+        line.VariantId = item?.Id;
+        line.Sku = item?.Sku;
+        if (item == null) return;
+        if (string.IsNullOrWhiteSpace(line.Description)) line.Description = item.Description;
+        if (line.UnitPrice == 0 && item.PurchasePrice != null) line.UnitPrice = item.PurchasePrice.Value;
+        if (item.VatRate != null) line.VatRate = item.VatRate.Value;
+    }
+}

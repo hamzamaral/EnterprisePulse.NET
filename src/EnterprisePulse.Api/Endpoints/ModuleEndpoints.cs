@@ -7,5 +7,7 @@ public static class ModuleEndpoints
     {
         app.MapHr();
         app.MapAssets();
+        app.MapInventory();
+        app.MapPurchasing();
     }
 }

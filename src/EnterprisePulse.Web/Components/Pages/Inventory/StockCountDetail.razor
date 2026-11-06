@@ -1,0 +1,114 @@
+@page "/inventory/counts/{Id:guid}"
+@inherits AppPage
+
+@if (_count == null) { <MudProgressLinear Indeterminate="true" /> return; }
+<PageTitle>@_count["number"] · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/stock-counts" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@T("Sayım", "Count") @_count["number"]</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("StockCountStatus", Status, Locale)</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@_count["warehouseName"] · @AssetUi.Day(_count["countDate"]) · @Counted / @HrUi.Int(_count["lineCount"])</MudText>
+    </div>
+    @if (Editable)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Cancel">@T("İptal", "Cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Complete" Disabled="_busy">@T("Tamamla", "Complete")</MudButton>
+    }
+</div>
+@if (_count["notes"] != null) { <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">@_count["notes"]</MudAlert> }
+@if (_count["adjustmentId"] != null)
+{
+    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+        <MudLink Href="@($"/inventory/movements/{_count["adjustmentId"]}")">@T("Fark fişi", "Adjustment") @_count["adjustmentNumber"]</MudLink>
+    </MudAlert>
+}
+<MudTable Items="Lines" Dense="true" Elevation="1">
+    <HeaderContent>
+        <MudTh>SKU</MudTh><MudTh>@T("Ürün", "Product")</MudTh><MudTh>@T("Lot", "Lot")</MudTh>
+        <MudTh Style="text-align:right">@T("Beklenen", "Expected")</MudTh><MudTh Style="text-align:right">@T("Sayılan", "Counted")</MudTh><MudTh Style="text-align:right">@T("Fark", "Diff")</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd class="ep-mono">@context["sku"]</MudTd>
+        <MudTd>@context["productName"] <small class="ep-muted">@context["variantName"]</small></MudTd>
+        <MudTd>@context["lotNo"]</MudTd>
+        <MudTd Style="text-align:right">@AssetUi.Dec(context["expectedQty"]).ToString("0.###")</MudTd>
+        <MudTd Style="text-align:right;min-width:120px">
+            @if (Editable)
+            {
+                <MudNumericField T="decimal?" Value="Qty(context)" ValueChanged="v => Set(context, v)" Margin="Margin.Dense" Variant="Variant.Outlined" Min="0" />
+            }
+            else { @(context["countedQty"] == null ? "—" : AssetUi.Dec(context["countedQty"]).ToString("0.###")) }
+        </MudTd>
+        <MudTd Style="text-align:right">@(context["difference"] == null ? "—" : AssetUi.Dec(context["difference"]).ToString("+0.###;-0.###;0"))</MudTd>
+    </RowTemplate>
+</MudTable>
+@if (Editable)
+{
+    <MudPaper Outlined="true" Class="pa-3 mt-3">
+        <MudText Typo="Typo.subtitle2">@T("Listede olmayan ürün ekle", "Add an item that is not on the sheet")</MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="5"><ItemPicker ValueChanged="item => _addVariant = item?.Id" IncludeServices="false" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField @bind-Value="_addLot" Label="@T("Lot", "Lot")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6" sm="2"><MudNumericField T="decimal?" @bind-Value="_addQty" Label="@T("Sayılan", "Counted")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" /></MudItem>
+            <MudItem xs="12" sm="2"><MudButton Variant="Variant.Outlined" OnClick="Add" Disabled="string.IsNullOrEmpty(_addVariant)">@L("add")</MudButton></MudItem>
+        </MudGrid>
+    </MudPaper>
+    <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@T("Sayımları kaydet", "Save counts")</MudButton>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _count;
+    private bool _busy;
+    private readonly Dictionary<string, decimal?> _edits = [];
+    private string? _addVariant;
+    private string? _addLot;
+    private decimal? _addQty;
+
+    private string? Status => _count?["status"]?.ToString();
+    private bool Editable => Status == "DRAFT" && Session.Has("inventory:count");
+    private int Counted => HrUi.Int(_count!["countedCount"]);
+    private IEnumerable<JsonObject> Lines => _count!["lines"]!.AsArray().Select(n => n!.AsObject());
+
+    protected override async Task OnParametersSetAsync() => await Load();
+    private Task Load() => Run(async () => _count = await Api.GetJsonAsync($"/api/stock/counts/{Id}"));
+
+    private decimal? Qty(JsonObject line) => _edits.TryGetValue(line["id"]!.ToString(), out var v) ? v : line["countedQty"] == null ? null : AssetUi.Dec(line["countedQty"]);
+    private void Set(JsonObject line, decimal? value) => _edits[line["id"]!.ToString()] = value;
+
+    private async Task Save()
+    {
+        if (_edits.Count == 0) return;
+        _busy = true;
+        var body = _edits.Select(kv => new { id = kv.Key, countedQty = kv.Value }).ToList();
+        var ok = await Run(async () => _count = await Api.PutAsync<JsonObject>($"/api/stock/counts/{Id}/lines", body), L("saved"));
+        if (ok) _edits.Clear();
+        _busy = false;
+    }
+
+    private async Task Add()
+    {
+        if (await Run(async () => _count = await Api.PostAsync<JsonObject>($"/api/stock/counts/{Id}/lines", new { variantId = _addVariant, lotNo = _addLot, countedQty = _addQty })))
+        {
+            _addVariant = null; _addLot = null; _addQty = null;
+        }
+    }
+
+    private async Task Complete()
+    {
+        if (_edits.Count > 0) await Save();
+        if (!await Confirm(T("Sayılan farklar tek bir düzeltme fişiyle stoğa işlenir.", "Counted differences are posted as one adjustment."))) return;
+        _busy = true;
+        await Run(async () => _count = await Api.PostAsync<JsonObject>($"/api/stock/counts/{Id}/complete"), T("Sayım tamamlandı", "Count completed"));
+        _busy = false;
+    }
+
+    private async Task Cancel()
+    {
+        if (!await Confirm(T("Sayım kapatılır, stok değişmez.", "The count is closed and stock stays unchanged."))) return;
+        await Run(async () => _count = await Api.PostAsync<JsonObject>($"/api/stock/counts/{Id}/cancel"));
+    }
+}

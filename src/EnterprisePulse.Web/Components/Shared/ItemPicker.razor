@@ -1,0 +1,48 @@
+@inherits AppPage
+
+<MudAutocomplete T="ItemOption" Value="_selected" ValueChanged="OnSelected" SearchFunc="Search" ToStringFunc="@(i => i?.Label ?? "")"
+                 Label="@Label" Required="Required" Disabled="Disabled" Clearable="true" ResetValueOnEmptyText="true"
+                 Variant="Variant.Outlined" Margin="Margin.Dense" DebounceInterval="250" MaxItems="20" CoerceText="false" Dense="true" />
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public string? InitialLabel { get; set; }
+    [Parameter] public EventCallback<ItemOption?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool IncludeServices { get; set; }
+    [Parameter] public string? WarehouseId { get; set; }
+    [Parameter] public bool InStock { get; set; }
+
+    private ItemOption? _selected;
+
+    protected override void OnParametersSet()
+    {
+        if (Value == _selected?.Id) return;
+        _selected = string.IsNullOrEmpty(Value) ? null : new ItemOption(Value, InitialLabel ?? Value, null, null, null, null, InitialLabel ?? "");
+    }
+
+    private async Task<IEnumerable<ItemOption>> Search(string? text, CancellationToken token)
+    {
+        var url = $"/api/stock/items?search={Uri.EscapeDataString(text ?? "")}&includeServices={IncludeServices.ToString().ToLowerInvariant()}&inStock={InStock.ToString().ToLowerInvariant()}";
+        if (!string.IsNullOrEmpty(WarehouseId)) url += $"&warehouseId={WarehouseId}";
+        try
+        {
+            var rows = await Api.GetAsync<List<JsonObject>>(url);
+            return rows.Select(r => new ItemOption(r["variantId"]!.ToString(), r["label"]!.ToString(), r["sku"]?.ToString(),
+                r["purchasePrice"] == null ? null : AssetUi.Dec(r["purchasePrice"]), r["salePrice"] == null ? null : AssetUi.Dec(r["salePrice"]),
+                r["vatRate"] == null ? null : AssetUi.Dec(r["vatRate"]), r["label"]!.ToString()));
+        }
+        catch (ApiException)
+        {
+            return [];
+        }
+    }
+
+    private async Task OnSelected(ItemOption? item)
+    {
+        _selected = item;
+        await ValueChanged.InvokeAsync(item);
+    }
+}

@@ -1,0 +1,43 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Teklifi siparişe çevir", "Turn the quote into an order")</MudText></TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">@T("Taslak sipariş açılır. Aynı talebin diğer açık teklifleri reddedilir.", "A draft order is opened. The request's other open quotes are rejected.")</MudAlert>
+        <RefPicker Resource="warehouses" @bind-Value="_warehouse" Label="@T("Depo", "Warehouse")" Required="true" />
+        <MudDatePicker @bind-Date="_expected" Label="@T("Beklenen teslim", "Expected date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy || string.IsNullOrEmpty(_warehouse)" OnClick="Save">@T("Kabul et", "Accept")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string QuoteId { get; set; } = "";
+    private string? _warehouse;
+    private DateTime? _expected;
+    private bool _busy;
+
+    private async Task Save()
+    {
+        _busy = true;
+        Guid? orderId = null;
+        var ok = await Run(async () => orderId = await Api.PostAsync<Guid>($"/api/purchasing/quotes/{QuoteId}/accept", new { warehouseId = _warehouse, expectedDate = _expected == null ? null : AssetUi.Iso(_expected) }),
+            T("Sipariş oluşturuldu", "Order created"));
+        _busy = false;
+        if (ok && orderId != null)
+        {
+            Nav.NavigateTo($"/purchasing/orders/{orderId}");
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+    }
+
+    public static async Task Open(ActionContext ctx)
+    {
+        await ctx.Dialogs.ShowAsync<AcceptQuoteDialog>(null, new DialogParameters<AcceptQuoteDialog> { { x => x.QuoteId, ctx.Id } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        await ctx.Reload();
+    }
+}

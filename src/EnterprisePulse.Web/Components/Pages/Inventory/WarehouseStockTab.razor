@@ -1,0 +1,28 @@
+@inherits AppPage
+
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudGrid>
+        <MudItem xs="6"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Kalem sayısı", "Item count")</div><MudText Typo="Typo.h6">@_row["itemCount"]</MudText></MudPaper></MudItem>
+        <MudItem xs="6"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Stok değeri", "Stock value")</div><MudText Typo="Typo.h6">@Fmt.Money(AssetUi.Dec(_row["stockValue"]), Session.Company?.BaseCurrency, Locale)</MudText></MudPaper></MudItem>
+    </MudGrid>
+    <MudButton Class="mt-3" Variant="Variant.Outlined" Href="@($"/inventory")">@T("Stok durumunu aç", "Open stock levels")</MudButton>
+}
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private JsonObject? _row;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Run(async () =>
+        {
+            var rows = await Api.GetAsync<List<JsonObject>>("/api/stock/warehouses");
+            _row = rows.FirstOrDefault(r => r["id"]?.ToString() == Record["id"]?.ToString()) ?? new JsonObject { ["itemCount"] = 0, ["stockValue"] = 0 };
+        });
+    }
+}

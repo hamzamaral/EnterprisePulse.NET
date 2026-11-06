@@ -1,0 +1,71 @@
+@inherits AppPage
+
+@if (_stock == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+        @T("Toplam", "Total"): <b>@AssetUi.Dec(_stock["onHand"]).ToString("0.###") @_stock["unitCode"]</b>
+        · @T("Değer", "Value"): <b>@Fmt.Money(AssetUi.Dec(_stock["stockValue"]), Session.Company?.BaseCurrency, Locale)</b>
+        @if (HrUi.Bool(_stock["hasHistory"])) { <span> · @T("Stok hareketi var; tür ve takip değiştirilemez.", "Stock has moved; type and tracking are fixed.")</span> }
+    </MudAlert>
+    <MudText Typo="Typo.subtitle2" Class="mb-1">@T("Depo bakiyeleri", "Warehouse balances")</MudText>
+    <MudTable Items='@_stock["stock"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Depo", "Warehouse")</MudTh><MudTh>SKU</MudTh><MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["warehouseName"]</MudTd><MudTd class="ep-mono">@context["sku"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-3">@T("Stok yok", "No stock")</MudText></NoRecordsContent>
+    </MudTable>
+    @if (_stock["trackingType"]?.ToString() is "LOT" or "SERIAL")
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">@(_stock["trackingType"]!.ToString() == "LOT" ? T("Lotlar", "Lots") : T("Seri numaraları", "Serials"))</MudText>
+        @if (_extra.Count == 0) { <MudText Color="Color.Secondary">@L("noRecords")</MudText> }
+        else if (_stock["trackingType"]!.ToString() == "LOT")
+        {
+            <MudTable Items="_extra" Dense="true" Elevation="0" Outlined="true">
+                <HeaderContent><MudTh>@T("Lot", "Lot")</MudTh><MudTh>@T("SKT", "Expiry")</MudTh><MudTh>@T("Depo", "Warehouse")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd class="ep-mono">@context["lotNo"]</MudTd><MudTd>@AssetUi.Day(context["expiryDate"])</MudTd>
+                    <MudTd>@context["warehouseName"]</MudTd><MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudTable Items="_extra" Dense="true" Elevation="0" Outlined="true">
+                <HeaderContent><MudTh>@T("Seri no", "Serial")</MudTh><MudTh>SKU</MudTh><MudTh>@L("status")</MudTh><MudTh>@T("Depo", "Warehouse")</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd class="ep-mono">@context["serialNo"]</MudTd><MudTd>@context["sku"]</MudTd>
+                    <MudTd>@Meta.EnumLabel("SerialStatus", context["status"]?.ToString(), Locale)</MudTd><MudTd>@context["warehouseName"]</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    }
+}
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private JsonObject? _stock;
+    private List<JsonObject> _extra = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Run(async () => _stock = await Api.GetJsonAsync($"/api/stock/products/{Record["id"]}"));
+        if (_stock?["trackingType"]?.ToString() == "LOT")
+        {
+            var ids = _stock["variants"]!.AsArray().Select(v => v!["id"]!.ToString());
+            _extra = [];
+            foreach (var id in ids) _extra.AddRange((await Api.GetAsync<List<JsonObject>>($"/api/stock/lots?variantId={id}")));
+        }
+        else if (_stock?["trackingType"]?.ToString() == "SERIAL")
+        {
+            var ids = _stock["variants"]!.AsArray().Select(v => v!["id"]!.ToString());
+            _extra = [];
+            foreach (var id in ids) _extra.AddRange(await Api.GetAsync<List<JsonObject>>($"/api/stock/serials?variantId={id}"));
+        }
+    }
+}

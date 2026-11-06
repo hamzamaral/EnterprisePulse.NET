@@ -1,0 +1,55 @@
+@inherits AppPage
+
+<MudGrid Spacing="2" Class="mb-3">
+    <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_from" Label="@T("Başlangıç", "From")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+    <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_to" Label="@T("Bitiş", "To")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+    <MudItem xs="12" sm="2"><MudButton Variant="Variant.Outlined" OnClick="Load">@L("refresh")</MudButton></MudItem>
+</MudGrid>
+@if (_statement != null)
+{
+    <MudGrid Class="mb-3">
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Açılış", "Opening")</div><b>@Money(_statement["openingBalance"])</b></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Borç", "Debit")</div><b>@Money(_statement["totalDebit"])</b></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Alacak", "Credit")</div><b>@Money(_statement["totalCredit"])</b></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@T("Kapanış", "Closing")</div><b>@Money(_statement["closingBalance"])</b></MudPaper></MudItem>
+    </MudGrid>
+    <MudTable Items='@_statement["entries"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Tarih", "Date")</MudTh><MudTh>@T("Belge", "Document")</MudTh><MudTh>@T("Açıklama", "Description")</MudTh>
+            <MudTh Style="text-align:right">@T("Borç", "Debit")</MudTh><MudTh Style="text-align:right">@T("Alacak", "Credit")</MudTh><MudTh Style="text-align:right">@T("Bakiye", "Balance")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@AssetUi.Day(context["entryDate"])</MudTd>
+            <MudTd><span class="ep-mono">@context["documentNumber"]</span><div class="ep-muted ep-small">@Meta.EnumLabel("LedgerDocumentType", context["documentType"]?.ToString(), Locale)</div></MudTd>
+            <MudTd>@context["description"] @if (HrUi.Bool(context["isReversal"])) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">@T("Ters", "Reversal")</MudChip> }</MudTd>
+            <MudTd Style="text-align:right">@Money(context["debitBase"])</MudTd>
+            <MudTd Style="text-align:right">@Money(context["creditBase"])</MudTd>
+            <MudTd Style="text-align:right">@Money(context["balance"])</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">@L("noRecords")</MudText></NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private JsonObject? _statement;
+    private DateTime? _from;
+    private DateTime? _to;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private Task Load() => Run(async () =>
+    {
+        var url = $"/api/partners/{Record["id"]}/statement";
+        var qs = new List<string>();
+        if (_from != null) qs.Add($"dateFrom={AssetUi.Iso(_from)}");
+        if (_to != null) qs.Add($"dateTo={AssetUi.Iso(_to)}");
+        if (qs.Count > 0) url += "?" + string.Join("&", qs);
+        _statement = await Api.GetJsonAsync(url);
+    });
+
+    private string Money(JsonNode? node) => Fmt.Money(AssetUi.Dec(node), _statement?["baseCurrency"]?.ToString(), Locale);
+}

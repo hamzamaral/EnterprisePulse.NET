@@ -1,0 +1,62 @@
+@inherits AppPage
+
+@if (_stock == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudTable Items='@_stock["variants"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>SKU</MudTh><MudTh>@T("Ad", "Name")</MudTh><MudTh>@T("Barkod", "Barcode")</MudTh>
+            <MudTh Style="text-align:right">@T("Eldeki", "On hand")</MudTh><MudTh Style="text-align:right">@T("Minimum", "Minimum")</MudTh>
+            <MudTh Style="text-align:right">@T("Ort. maliyet", "Avg. cost")</MudTh><MudTh>@L("status")</MudTh>
+            @if (CanEdit) { <MudTh /> }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="ep-mono">@context["sku"]</span> @if (HrUi.Bool(context["isDefault"])) { <MudChip T="string" Size="Size.Small">@T("Varsayılan", "Default")</MudChip> }</MudTd>
+            <MudTd>@context["name"]</MudTd>
+            <MudTd class="ep-mono">@context["barcode"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["onHand"]).ToString("0.###") @if (HrUi.Bool(context["lowStock"])) { <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Size="Size.Small" Color="Color.Warning" /> }</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["minStock"]).ToString("0.###")</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["averageCost"]).ToString("0.####")</MudTd>
+            <MudTd>@(HrUi.Bool(context["isActive"]) ? T("Aktif", "Active") : T("Pasif", "Inactive"))</MudTd>
+            @if (CanEdit)
+            {
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" OnClick="() => Edit(context)" />
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => Remove(context)" />
+                </MudTd>
+            }
+        </RowTemplate>
+    </MudTable>
+    @if (CanEdit && _stock["type"]?.ToString() != "SERVICE")
+    {
+        <MudButton Class="mt-2" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="() => Edit(null)">@T("Varyant ekle", "Add variant")</MudButton>
+    }
+}
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private JsonObject? _stock;
+    private bool CanEdit => Session.Has("inventory:update");
+
+    protected override async Task OnParametersSetAsync() => await Reload();
+
+    private Task Reload() => Run(async () => _stock = await Api.GetJsonAsync($"/api/stock/products/{Record["id"]}"));
+
+    private async Task Edit(JsonObject? row)
+    {
+        var ok = await VariantDialog.OpenAsync(Dialogs, Record["id"]!.ToString(), row);
+        if (ok) await Reload();
+    }
+
+    private async Task Remove(JsonObject row)
+    {
+        if (!await Confirm(T("Varyant silinecek.", "The variant will be deleted."))) return;
+        if (await Run(() => Api.DeleteAsync($"/api/stock/products/{Record["id"]}/variants/{row["id"]}"))) await Reload();
+    }
+}

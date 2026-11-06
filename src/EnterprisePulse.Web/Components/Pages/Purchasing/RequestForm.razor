@@ -1,0 +1,60 @@
+@page "/purchasing/requests/new"
+@inherits AppPage
+
+<PageTitle>@T("Satın alma talebi", "Purchase request") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/purchase-requests" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Yeni satın alma talebi", "New purchase request")</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@T("Talebi gönder", "Submit")</MudButton>
+</div>
+<MudGrid Spacing="2" Class="mb-3">
+    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_title" Label="@T("Başlık", "Title")" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_needed" Label="@T("İhtiyaç tarihi", "Needed by")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+    <MudItem xs="12" sm="3"><RefPicker Resource="departments" @bind-Value="_department" Label="@T("Departman", "Department")" /></MudItem>
+    <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+</MudGrid>
+<MudText Typo="Typo.subtitle2" Class="mb-2">@T("Kalemler", "Items")</MudText>
+<MudTable Items="_lines" Dense="true" Elevation="0" Outlined="true">
+    <HeaderContent><MudTh>@T("Ürün", "Item")</MudTh><MudTh>@T("Açıklama", "Description")</MudTh><MudTh>@T("Miktar", "Qty")</MudTh><MudTh>@T("Tahmini fiyat", "Estimated price")</MudTh><MudTh /></HeaderContent>
+    <RowTemplate>
+        <MudTd Style="min-width:200px"><ItemPicker IncludeServices="true" ValueChanged="item => Pick(context, item)" /></MudTd>
+        <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Variant="Variant.Text" /></MudTd>
+        <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0.001m" Margin="Margin.Dense" Variant="Variant.Text" /></MudTd>
+        <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" Margin="Margin.Dense" Variant="Variant.Text" /></MudTd>
+        <MudTd><MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" OnClick="() => _lines.Remove(context)" /></MudTd>
+    </RowTemplate>
+</MudTable>
+<MudButton Class="mt-2" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="() => _lines.Add(new DocLine())">@T("Satır ekle", "Add line")</MudButton>
+
+@code {
+    private string? _title;
+    private DateTime? _needed;
+    private string? _department;
+    private string? _notes;
+    private readonly List<DocLine> _lines = [new()];
+    private bool _busy;
+
+    private static void Pick(DocLine line, ItemOption? item)
+    {
+        line.VariantId = item?.Id;
+        if (item == null) return;
+        if (string.IsNullOrWhiteSpace(line.Description)) line.Description = item.Description;
+        if (line.UnitPrice == 0 && item.PurchasePrice != null) line.UnitPrice = item.PurchasePrice.Value;
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/purchasing/requests", new
+        {
+            title = _title, neededBy = _needed == null ? null : AssetUi.Iso(_needed), departmentId = _department, notes = _notes,
+            lines = _lines.Where(l => l.VariantId != null || !string.IsNullOrWhiteSpace(l.Description)).Select(l => new
+            {
+                variantId = l.VariantId, description = l.Description, quantity = l.Quantity, estimatedPrice = l.UnitPrice,
+            }),
+        }), T("Talep oluşturuldu", "Request created"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/r/purchase-requests/{created["id"]}");
+    }
+}

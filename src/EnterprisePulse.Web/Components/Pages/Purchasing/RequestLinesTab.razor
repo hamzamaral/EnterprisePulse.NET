@@ -1,0 +1,36 @@
+@inherits AppPage
+
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-2">@T("Tahmini toplam", "Estimated total"): <b>@Fmt.Money(AssetUi.Dec(_row["estimatedTotal"]), Session.Company?.BaseCurrency, Locale)</b>
+        · @T("Talep eden", "Requested by") @_row["requestedByName"]</MudText>
+    <MudTable Items='@_row["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>#</MudTh><MudTh>SKU</MudTh><MudTh>@T("Açıklama", "Description")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh><MudTh Style="text-align:right">@T("Tahmini", "Estimated")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["lineNo"]</MudTd><MudTd class="ep-mono">@context["sku"]</MudTd><MudTd>@context["description"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###") @context["unitCode"]</MudTd>
+            <MudTd Style="text-align:right">@(context["estimatedPrice"] == null ? "—" : Fmt.Money(AssetUi.Dec(context["estimatedPrice"]), null, Locale))</MudTd>
+        </RowTemplate>
+    </MudTable>
+    @if (_row["orders"] is JsonArray orders && orders.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-3">@T("Siparişler", "Orders")</MudText>
+        @foreach (var o in orders)
+        {
+            <MudLink Href="@($"/purchasing/orders/{o!["id"]}")">@o["number"]</MudLink> <span class="ep-muted">@o["status"]</span>
+        }
+    }
+    @if (Session.Has("purchasing:create") && _row["status"]?.ToString() == "APPROVED")
+    {
+        <MudButton Class="mt-3" Variant="Variant.Outlined" Href="@($"/purchasing/quotes/new?requestId={_row["id"]}")">@T("Teklif gir", "Enter a quote")</MudButton>
+    }
+}
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private JsonObject? _row;
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/purchasing/requests/{Record["id"]}"));
+}

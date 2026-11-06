@@ -1,0 +1,55 @@
+@page "/purchasing/quotes/new"
+@inherits AppPage
+
+<PageTitle>@T("Tedarikçi teklifi", "Supplier quote") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/supplier-quotes" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Yeni tedarikçi teklifi", "New supplier quote")</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@L("save")</MudButton>
+</div>
+<MudGrid Spacing="2" Class="mb-3">
+    <MudItem xs="12" sm="4"><RefPicker Resource="business-partners" @bind-Value="_partner" Label="@T("Tedarikçi", "Supplier")" Required="true" Filters="_suppliers" /></MudItem>
+    <MudItem xs="12" sm="4"><RefPicker Resource="purchase-requests" @bind-Value="_request" Label="@T("Talep", "Request")" Filters="_approved" /></MudItem>
+    <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+    <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_valid" Label="@T("Geçerlilik", "Valid until")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+    <MudItem xs="6" sm="2"><MudNumericField T="int?" @bind-Value="_days" Label="@T("Teslim (gün)", "Delivery days")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" /></MudItem>
+    <MudItem xs="6" sm="2"><MudTextField @bind-Value="_currency" Label="@T("Para birimi", "Currency")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    <MudItem xs="6" sm="2"><MudNumericField T="decimal?" @bind-Value="_rate" Label="@T("Kur", "Rate")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" /></MudItem>
+    <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+</MudGrid>
+<DocumentLines Lines="_lines" IncludeServices="true" Currency="@_currency" />
+
+@code {
+    private static readonly Dictionary<string, string> _suppliers = new() { ["type__in"] = "SUPPLIER,BOTH" };
+    private static readonly Dictionary<string, string> _approved = new() { ["status"] = "APPROVED" };
+    private string? _partner;
+    private string? _request;
+    private DateTime? _date = DateTime.Today;
+    private DateTime? _valid;
+    private int? _days;
+    private string _currency = "TRY";
+    private decimal? _rate;
+    private string? _notes;
+    private readonly List<DocLine> _lines = [new()];
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("requestId", out var id)) _request = id.ToString();
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/purchasing/quotes", new
+        {
+            partnerId = _partner, requestId = _request, quoteDate = AssetUi.Iso(_date), validUntil = _valid == null ? null : AssetUi.Iso(_valid),
+            deliveryDays = _days, currencyCode = _currency, exchangeRate = _rate, notes = _notes,
+            lines = _lines.Where(l => l.VariantId != null || !string.IsNullOrWhiteSpace(l.Description)).Select(l => l.ToApi()),
+        }), L("saved"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/r/supplier-quotes/{created["id"]}");
+    }
+}

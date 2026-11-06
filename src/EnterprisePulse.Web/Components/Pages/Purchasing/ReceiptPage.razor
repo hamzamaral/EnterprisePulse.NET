@@ -1,0 +1,110 @@
+@page "/purchasing/receipts/new"
+@page "/purchasing/receipts/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Mal kabul", "Goods receipt") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/goods-receipts" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@(IsNew ? T("Yeni mal kabul", "New goods receipt") : _row?["number"]?.ToString())</MudText>
+    @if (IsNew) { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || _order == null">@T("Teslim al", "Receive")</MudButton> }
+</div>
+
+@if (!IsNew)
+{
+    @if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+    else
+    {
+        <MudText Class="mb-2">@T("Sipariş", "Order") <MudLink Href="@($"/purchasing/orders/{_row["orderId"]}")">@_row["orderNumber"]</MudLink>
+            · @_row["partnerTitle"] · @_row["warehouseName"] · @AssetUi.Day(_row["receiptDate"])</MudText>
+        @if (_row["stockMovementId"] != null)
+        {
+            <MudLink Href="@($"/inventory/movements/{_row["stockMovementId"]}")">@T("Stok hareketi", "Stock movement") @_row["stockMovementNumber"]</MudLink>
+        }
+        <MudTable Items='@_row["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="1" Class="mt-3">
+            <HeaderContent><MudTh>#</MudTh><MudTh>SKU</MudTh><MudTh>@T("Açıklama", "Description")</MudTh><MudTh>@T("Lot / seri", "Lot / serial")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context["orderLineNo"]</MudTd><MudTd class="ep-mono">@context["sku"]</MudTd><MudTd>@context["description"]</MudTd>
+                <MudTd>@context["lotNo"] @context["serialNos"]</MudTd><MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+else
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" Value="@_orderId" ValueChanged="LoadOrder" Label="@T("Sipariş", "Order")" Variant="Variant.Outlined" Margin="Margin.Dense" ToStringFunc="OrderLabel">
+                @foreach (var o in _open)
+                {
+                    <MudSelectItem T="string" Value='@o["id"]!.ToString()'>@o["number"] · @o["partnerTitle"]</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3"><RefPicker Resource="warehouses" @bind-Value="_warehouse" Label="@T("Depo", "Warehouse")" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="6" sm="3"><MudTextField @bind-Value="_note" Label="@T("İrsaliye no", "Delivery note")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+    @if (_order != null)
+    {
+        <DocumentLines Lines="_lines" AllowAdd="false" ShowPrice="false" ShowLot="true" />
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+    private JsonObject? _row;
+    private JsonObject? _order;
+    private List<JsonObject> _open = [];
+    private string? _orderId;
+    private string? _warehouse;
+    private DateTime? _date = DateTime.Today;
+    private string? _note;
+    private List<DocLine> _lines = [];
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!IsNew) { await Run(async () => _row = await Api.GetJsonAsync($"/api/purchasing/receipts/{Id}")); return; }
+        await Run(async () => _open = await Api.GetAsync<List<JsonObject>>("/api/purchasing/orders/open"));
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("orderId", out var id)) await LoadOrder(id.ToString());
+    }
+
+    private string OrderLabel(string? id) => _open.FirstOrDefault(o => o["id"]?.ToString() == id)?["number"]?.ToString() ?? "";
+
+    private async Task LoadOrder(string? id)
+    {
+        _orderId = id;
+        if (string.IsNullOrEmpty(id)) return;
+        await Run(async () => _order = await Api.GetJsonAsync($"/api/purchasing/orders/{id}"));
+        if (_order == null) return;
+        _warehouse = _order["warehouseId"]?.ToString();
+        _lines = _order["lines"]!.AsArray().Select(n => n!.AsObject()).Select(l =>
+        {
+            var remaining = AssetUi.Dec(l["quantity"]) - AssetUi.Dec(l["receivedQty"]);
+            return new DocLine
+            {
+                OrderLineId = l["id"]?.ToString(), VariantId = l["variantId"]?.ToString(), Sku = l["sku"]?.ToString(), Description = l["description"]?.ToString() ?? "",
+                Quantity = Math.Max(0, remaining), MaxQuantity = Math.Max(0, remaining),
+            };
+        }).Where(l => l.Quantity > 0).ToList();
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/purchasing/receipts", new
+        {
+            orderId = _orderId, warehouseId = _warehouse, receiptDate = AssetUi.Iso(_date), deliveryNoteNo = _note,
+            lines = _lines.Where(l => l.Quantity > 0).Select(l => new
+            {
+                orderLineId = l.OrderLineId, quantity = l.Quantity, lotNo = l.LotNo, expiryDate = l.Expiry == null ? null : AssetUi.Iso(l.Expiry),
+                serialNos = string.IsNullOrWhiteSpace(l.Serials) ? null : l.Serials.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            }),
+        }), T("Mal kabul işlendi", "Goods received"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/purchasing/receipts/{created["id"]}");
+    }
+}

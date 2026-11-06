@@ -84,6 +84,8 @@ public abstract class ManagedRecordHook(string resource, string message) : IReso
 {
     public string Resource => resource;
 
+    public virtual IQueryable<T> Scope<T>(IQueryable<T> query) where T : class => query;
+
     public Task BeforeSaveAsync(object entity, bool isNew) => throw new ConflictAppException(message);
 
     public Task BeforeDeleteAsync(object entity) => throw new ConflictAppException(message);

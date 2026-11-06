@@ -1,0 +1,25 @@
+@inherits AppPage
+
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-2">@_row["partnerTitle"] · @_row["currencyCode"] @AssetUi.Dec(_row["exchangeRate"]).ToString("0.####")
+        @if (_row["orderId"] != null) { <MudLink Href="@($"/purchasing/orders/{_row["orderId"]}")">@T("Sipariş", "Order") @_row["orderNumber"]</MudLink> }
+    </MudText>
+    <DocumentLines Lines="_lines" Editable="false" Currency="@(_row["currencyCode"]?.ToString())" />
+    <MudText Class="mt-2">@T("Genel toplam (baz)", "Grand total (base)"): <b>@Fmt.Money(AssetUi.Dec(_row["totals"]?["grandTotalBase"]), Session.Company?.BaseCurrency, Locale)</b></MudText>
+}
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private JsonObject? _row;
+    private List<DocLine> _lines = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Run(async () => _row = await Api.GetJsonAsync($"/api/purchasing/quotes/{Record["id"]}"));
+        _lines = _row?["lines"]?.AsArray().Select(n => DocLine.From(n!.AsObject())).ToList() ?? [];
+    }
+}

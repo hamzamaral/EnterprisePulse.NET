@@ -1,0 +1,62 @@
+@page "/inventory/movements/new"
+@inherits AppPage
+
+<PageTitle>@T("Stok hareketi", "Stock movement") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/stock-movements" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Yeni stok hareketi", "New stock movement")</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || _lines.Count == 0">@T("İşle", "Post")</MudButton>
+</div>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">@T("Hareket işlendiğinde bakiyeler hemen güncellenir ve belge değiştirilemez.", "Once posted, balances update immediately and the document cannot be changed.")</MudAlert>
+<MudGrid Spacing="2" Class="mb-3">
+    <MudItem xs="12" sm="3">
+        <MudSelect T="string" @bind-Value="_type" Label="@T("Tür", "Type")" Variant="Variant.Outlined" Margin="Margin.Dense">
+            @foreach (var t in new[] { "RECEIPT", "ISSUE", "TRANSFER", "ADJUSTMENT" })
+            {
+                <MudSelectItem T="string" Value="@t">@Meta.EnumLabel("StockMovementType", t, Locale)</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+    @if (_type is "ISSUE" or "TRANSFER")
+    {
+        <MudItem xs="12" sm="3"><RefPicker Resource="warehouses" @bind-Value="_source" Label="@T("Çıkış deposu", "Source warehouse")" Required="true" /></MudItem>
+    }
+    @if (_type is "RECEIPT" or "TRANSFER" or "ADJUSTMENT")
+    {
+        <MudItem xs="12" sm="3"><RefPicker Resource="warehouses" @bind-Value="_target" Label="@T("Giriş deposu", "Target warehouse")" Required="true" /></MudItem>
+    }
+    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_reference" Label="@T("Referans", "Reference")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+</MudGrid>
+<DocumentLines Lines="_lines" ShowPrice="@(_type == "RECEIPT")" ShowLot="true" Currency="@(Session.Company?.BaseCurrency)" />
+
+@code {
+    private string _type = "RECEIPT";
+    private DateTime? _date = DateTime.Today;
+    private string? _source;
+    private string? _target;
+    private string? _reference;
+    private string? _notes;
+    private readonly List<DocLine> _lines = [new()];
+    private bool _busy;
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/stock/movements", new
+        {
+            type = _type, movementDate = AssetUi.Iso(_date), sourceWarehouseId = _source, targetWarehouseId = _target,
+            reference = _reference, notes = _notes,
+            lines = _lines.Where(l => l.VariantId != null).Select(l => new
+            {
+                variantId = l.VariantId, quantity = l.Quantity, unitCost = _type == "RECEIPT" ? l.UnitPrice : (decimal?)null,
+                lotNo = l.LotNo, expiryDate = l.Expiry == null ? null : AssetUi.Iso(l.Expiry),
+                serialNos = string.IsNullOrWhiteSpace(l.Serials) ? null : l.Serials.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            }),
+        }), T("Hareket işlendi", "Movement posted"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/inventory/movements/{created["id"]}");
+    }
+}
