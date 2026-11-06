@@ -1,0 +1,127 @@
+@page "/hr/my-attendance"
+@inherits AppPage
+
+<PageTitle>@T("Mesaim", "My attendance") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("Mesaim", "My attendance")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Giriş-çıkış kaydı ve aylık özet", "Clock in / out and the month at a glance")</MudText>
+    </div>
+</div>
+
+@if (Session.Me?.User.EmployeeId == null)
+{
+    <MudAlert Severity="Severity.Info">@T("Hesabınıza bağlı bir personel kaydı yok. İK ile iletişime geçin.", "No employee record is linked to your account. Please contact HR.")</MudAlert>
+    return;
+}
+@if (_data == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+@{
+    var today = _data["today"]!;
+    var totals = _data["row"]!["totals"]!;
+}
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudText Typo="Typo.h6" Class="ep-grow">@DateTime.Parse(today["date"]!.ToString()).ToString("dd MMMM yyyy, dddd", Fmt.Culture(Locale))</MudText>
+        <MudChip T="string" Color='HrUi.DayColor(today["status"]?.ToString())'>@HrUi.DayLabel(today["status"]?.ToString(), Locale)</MudChip>
+    </MudStack>
+    <MudGrid Spacing="2">
+        <MudItem xs="6" md="2"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Planlanan", "Planned")</MudText><MudText Typo="Typo.h6">@Range(today)</MudText></MudItem>
+        <MudItem xs="6" md="2"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Giriş", "Check-in")</MudText><MudText Typo="Typo.h6">@(today["checkIn"]?.ToString() ?? "—")</MudText></MudItem>
+        <MudItem xs="6" md="2"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Çıkış", "Check-out")</MudText><MudText Typo="Typo.h6">@(today["checkOut"]?.ToString() ?? "—")</MudText></MudItem>
+        <MudItem xs="6" md="2"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Çalışılan", "Worked")</MudText><MudText Typo="Typo.h6">@Worked(today)</MudText></MudItem>
+        <MudItem xs="12" md="4" Class="d-flex gap-2 justify-end align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Login" Disabled='_busy || !HrUi.Bool(_data["canCheckIn"])' OnClick="CheckIn">@T("Giriş yap", "Check in")</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Large" StartIcon="@Icons.Material.Filled.Logout" Disabled='_busy || !HrUi.Bool(_data["canCheckOut"])' OnClick="CheckOut">@T("Çıkış yap", "Check out")</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <MudText Typo="Typo.h6" Class="ep-grow">@T("Ay özeti", "Month summary")</MudText>
+    <MudDatePicker Date="_month" DateChanged="SetMonth" OpenTo="OpenTo.Month" FixDay="1" DateFormat="MMMM yyyy" Culture="Fmt.Culture(Locale)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:200px" />
+</MudStack>
+<MudGrid Spacing="2" Class="mb-3">
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Çalışılan / planlanan", "Worked / planned")</MudText><MudText Typo="Typo.h5">@HrUi.Minutes(HrUi.Int(totals["workedMinutes"])) / @HrUi.Minutes(HrUi.Int(totals["plannedMinutes"]))</MudText></MudPaper></MudItem>
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Fazla mesai", "Overtime")</MudText><MudText Typo="Typo.h5">@HrUi.Minutes(HrUi.Int(totals["overtimeMinutes"]))</MudText></MudPaper></MudItem>
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Geç kalınan gün", "Late days")</MudText><MudText Typo="Typo.h5" Color='@(HrUi.Int(totals["lateDays"]) > 0 ? Color.Warning : Color.Default)'>@totals["lateDays"]</MudText></MudPaper></MudItem>
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Devamsızlık", "Absent days")</MudText><MudText Typo="Typo.h5" Color='@(HrUi.Int(totals["absentDays"]) > 0 ? Color.Error : Color.Default)'>@totals["absentDays"]</MudText></MudPaper></MudItem>
+</MudGrid>
+
+<MudTable Items="Days" Dense="true" Elevation="1">
+    <HeaderContent>
+        <MudTh>@T("Tarih", "Date")</MudTh>
+        <MudTh>@T("Planlanan", "Planned")</MudTh>
+        <MudTh>@T("Giriş", "Check-in")</MudTh>
+        <MudTh>@T("Çıkış", "Check-out")</MudTh>
+        <MudTh Style="text-align:right">@T("Çalışılan", "Worked")</MudTh>
+        <MudTh Style="text-align:right">@T("Fazla mesai", "Overtime")</MudTh>
+        <MudTh>@L("status")</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@DateTime.Parse(context["date"]!.ToString()).ToString("dd MMM, ddd", Fmt.Culture(Locale))</MudTd>
+        <MudTd>@Range(context)</MudTd>
+        <MudTd>@(context["checkIn"]?.ToString() ?? "—")</MudTd>
+        <MudTd>@(context["checkOut"]?.ToString() ?? "—")</MudTd>
+        <MudTd Style="text-align:right">@Worked(context)</MudTd>
+        <MudTd Style="text-align:right">@(HrUi.Int(context["overtimeMinutes"]) > 0 ? HrUi.Minutes(HrUi.Int(context["overtimeMinutes"])) : "—")</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color='HrUi.DayColor(context["status"]?.ToString())'>@HrUi.DayLabel(context["status"]?.ToString(), Locale)</MudChip>
+            @if (HrUi.Int(context["lateMinutes"]) > 0)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">+@context["lateMinutes"] @T("dk", "min")</MudText>
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@L("noRecords")</MudText></NoRecordsContent>
+</MudTable>
+
+@code {
+    private JsonObject? _data;
+    private DateTime? _month = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private bool _busy;
+
+    private IEnumerable<JsonNode> Days
+    {
+        get
+        {
+            var today = _data!["today"]!["date"]!.ToString();
+            return _data["row"]!["days"]!.AsArray().Where(d => string.CompareOrdinal(d!["date"]!.ToString(), today) <= 0
+                && d["status"]?.ToString() != "UPCOMING" && (d["status"]?.ToString() != "OFF" || d["checkIn"] != null)).Reverse()!;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.Me?.User.EmployeeId != null) await Load();
+    }
+
+    private async Task Load() => await Run(async () => _data = await Api.GetJsonAsync($"/api/hr/attendance/me?month={_month:yyyy-MM}"));
+
+    private async Task SetMonth(DateTime? month)
+    {
+        _month = month ?? _month;
+        await Load();
+    }
+
+    private async Task CheckIn()
+    {
+        _busy = true;
+        if (await Run(async () => _data = await Api.PostAsync<JsonObject>("/api/hr/attendance/check-in"), T("Giriş kaydedildi", "Checked in"))) await Load();
+        _busy = false;
+    }
+
+    private async Task CheckOut()
+    {
+        _busy = true;
+        if (await Run(async () => _data = await Api.PostAsync<JsonObject>("/api/hr/attendance/check-out"), T("Çıkış kaydedildi", "Checked out"))) await Load();
+        _busy = false;
+    }
+
+    private static string Range(JsonNode d) => d["plannedStart"] is { } s ? $"{s}–{d["plannedEnd"]}" : "—";
+    private static string Worked(JsonNode d) => HrUi.Int(d["workedMinutes"]) is > 0 and var m ? HrUi.Minutes(m) : "—";
+}

@@ -1,0 +1,76 @@
+@page "/hr/org-chart"
+@inherits AppPage
+
+<PageTitle>@T("Organizasyon şeması", "Org chart") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("Organizasyon şeması", "Organization chart")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Aktif personelin raporlama hiyerarşisi", "Reporting hierarchy of active employees")</MudText>
+    </div>
+    <MudTextField T="string" @bind-Value="_search" Placeholder="@L("search")" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Clearable="true" Style="max-width:260px" />
+</div>
+
+@if (_roots == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_roots.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">@L("noRecords")</MudAlert>
+}
+else
+{
+    <div class="ep-org">
+        <ul>
+            @foreach (var node in _roots)
+            {
+                @Render(node)
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    private List<JsonObject>? _roots;
+    private string? _search;
+
+    protected override async Task OnInitializedAsync() =>
+        await Run(async () => _roots = (await Api.GetAsync<JsonArray>("/api/hr/org-chart")).Select(n => n!.AsObject()).ToList());
+
+    private bool Match(JsonNode node) => !string.IsNullOrWhiteSpace(_search)
+        && (node["fullName"]!.ToString().Contains(_search, StringComparison.CurrentCultureIgnoreCase)
+            || node["positionName"]?.ToString().Contains(_search, StringComparison.CurrentCultureIgnoreCase) == true
+            || node["departmentName"]?.ToString().Contains(_search, StringComparison.CurrentCultureIgnoreCase) == true);
+
+    private static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(p => p[0]));
+
+    private RenderFragment Render(JsonNode node) => __builder =>
+    {
+        var children = node["children"]!.AsArray();
+        <li>
+            <div class="ep-org-card @(Match(node) ? "ep-org-hit" : "")" @onclick='() => Open(node["id"]!.ToString())'>
+                <MudAvatar Color="Color.Primary" Size="Size.Small">@Initials(node["fullName"]!.ToString())</MudAvatar>
+                <div>
+                    <div class="ep-org-name">@node["fullName"]</div>
+                    <div class="ep-muted">@node["positionName"]</div>
+                    <div class="ep-muted ep-small">@node["departmentName"]@(children.Count > 0 ? $" · {children.Count} {T("kişi", "reports")}" : "")</div>
+                </div>
+            </div>
+            @if (children.Count > 0)
+            {
+                <ul>
+                    @foreach (var child in children)
+                    {
+                        @Render(child!)
+                    }
+                </ul>
+            }
+        </li>
+    };
+
+    private void Open(string id)
+    {
+        if (Session.Has("employees:read")) Nav.NavigateTo($"/r/employees/{id}");
+    }
+}

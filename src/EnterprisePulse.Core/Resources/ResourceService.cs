@@ -261,19 +261,20 @@ public sealed class ResourceService(AppDbContext db, MetadataStore meta, Numberi
         var entity = Activator.CreateInstance(r.ClrType)!;
         await ApplyAsync(r, entity, body, isNew: true);
         await AssertParentEditable(r, entity);
-        if (r.Sequence != null && r.Field("number") is { } number && string.IsNullOrEmpty(number.Property.GetValue(entity) as string))
-        {
-            number.Property.SetValue(entity, await numbering.NextAsync(r.Sequence));
-        }
         if (r.Field("createdById") is { } createdBy && createdBy.Property.GetValue(entity) == null)
         {
             createdBy.Property.SetValue(entity, db.User.UserId);
         }
-        ValidateRequired(r, entity);
         if (Hook(resource) is { } hook) await hook.BeforeSaveAsync(entity, true);
+        var number = r.SequenceField is { } sf && string.IsNullOrEmpty(sf.Property.GetValue(entity) as string) ? sf : null;
+        ValidateRequired(r, entity, skip: number);
+        // Numbers are taken last, in the insert's transaction, so a rejected document leaves no gap in the series.
+        await using var tx = number != null && db.Database.CurrentTransaction == null ? await db.Database.BeginTransactionAsync() : null;
+        if (number != null) number.Property.SetValue(entity, await numbering.NextAsync(r.Sequence!));
         db.Add(entity);
         await SaveAsync();
         if (Hook(resource) is { } after) await after.AfterSaveAsync(entity, true);
+        if (tx != null) await tx.CommitAsync();
         return entity;
     }
 
@@ -285,8 +286,8 @@ public sealed class ResourceService(AppDbContext db, MetadataStore meta, Numberi
         AssertDraft(r, entity);
         await AssertParentEditable(r, entity);
         await ApplyAsync(r, entity, body, isNew: false);
-        ValidateRequired(r, entity);
         if (Hook(resource) is { } hook) await hook.BeforeSaveAsync(entity, false);
+        ValidateRequired(r, entity);
         await SaveAsync();
         if (Hook(resource) is { } after) await after.AfterSaveAsync(entity, false);
         return entity;
@@ -377,9 +378,9 @@ public sealed class ResourceService(AppDbContext db, MetadataStore meta, Numberi
         if (found.Count == 0) throw new BadRequestAppException($"Geçersiz seçim: {field.Label.Tr}");
     }
 
-    private static void ValidateRequired(ResourceMeta r, object entity)
+    private static void ValidateRequired(ResourceMeta r, object entity, FieldMeta? skip = null)
     {
-        foreach (var f in r.Fields.Where(f => f.Required && !f.ReadOnly))
+        foreach (var f in r.Fields.Where(f => f.Required && !f.ReadOnly && f != skip))
         {
             var v = f.Property.GetValue(entity);
             var missing = v == null || (v is string s && s.Length == 0) || (v is Guid g && g == Guid.Empty);

@@ -1,0 +1,57 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@EmployeeName</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">@DateTime.Parse(Day["date"]!.ToString()).ToString("dd MMMM yyyy, dddd", Fmt.Culture(Locale))</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            @T("Planlanan", "Planned"): <b>@(Day["plannedStart"] is { } s ? $"{s}–{Day["plannedEnd"]}" : T("Tatil", "Off"))</b>
+            · @L("status"): <b>@HrUi.DayLabel(Day["status"]?.ToString(), Locale)</b>
+        </MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="6"><MudTextField @bind-Value="_in" Label="@T("Giriş (SS:dd)", "Check-in (HH:mm)")" Placeholder="09:00" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_out" Label="@T("Çıkış (SS:dd)", "Check-out (HH:mm)")" Placeholder="18:00" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                                          HelperText="@T("Girişten önceki saat ertesi gün sayılır", "A time before the check-in means the next day")" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_note" Label="@T("Not", "Note")" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" /></MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">@T("Saatleri ve notu temizlemek kaydı siler.", "Clearing the times and the note removes the record.")</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@L("save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string EmployeeId { get; set; } = "";
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public JsonNode Day { get; set; } = null!;
+
+    private string? _in, _out, _note;
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        _in = Day["checkIn"]?.ToString();
+        _out = Day["checkOut"]?.ToString();
+        _note = Day["note"]?.ToString();
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        var ok = await Run(() => Api.PutAsync<JsonObject>("/api/hr/attendance/records", new
+        {
+            employeeId = EmployeeId,
+            date = Day["date"]!.ToString(),
+            checkIn = string.IsNullOrWhiteSpace(_in) ? null : _in,
+            checkOut = string.IsNullOrWhiteSpace(_out) ? null : _out,
+            note = _note,
+        }), L("saved"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+}

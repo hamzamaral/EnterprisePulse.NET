@@ -15,6 +15,10 @@ else if (Field.Kind == "bool")
         <MudIcon Icon="@Icons.Material.Outlined.Circle" Color="Color.Default" Size="Size.Small" />
     }
 }
+else if (Field.Name == "color" && Row[Field.Name] is { } color)
+{
+    <span class="ep-dot" style="background:@color"></span><span class="ep-mono">@color</span>
+}
 else
 {
     @Fmt.Value(Field, Row[Field.Name], Meta, Locale, Labels)

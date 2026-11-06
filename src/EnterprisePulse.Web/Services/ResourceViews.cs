@@ -38,6 +38,9 @@ public sealed class ResourceAction
         r => statuses.Contains(r["status"]?.ToString());
 }
 
+/// <summary>Button in the list header that opens a related page (balances, weekly plan...).</summary>
+public sealed record HeaderLink(string Label, string LabelEn, string Href, string Icon, string? Permission = null);
+
 public sealed class ResourceTab
 {
     public required string Title { get; init; }
@@ -59,6 +62,7 @@ public sealed class ResourceView
     public Type? CreateDialog { get; set; }
     public List<ResourceAction> Actions { get; } = [];
     public List<ResourceTab> Tabs { get; } = [];
+    public List<HeaderLink> Links { get; } = [];
     public string[] HiddenChildren { get; set; } = [];
     public string? WorkflowEntity { get; set; }
 }
@@ -79,6 +83,54 @@ public static partial class ResourceViews
     static ResourceViews()
     {
         Platform();
+        Hr();
+    }
+
+    static void Hr()
+    {
+        Configure("employees", v =>
+        {
+            v.Columns = ["employeeNo", "firstName", "lastName", "departmentId", "positionId", "managerId", "hireDate", "status"];
+            v.FilterFields = ["status", "departmentId", "positionId", "branchId", "employmentType", "managerId"];
+            v.ReadOnlyFields = ["status", "terminationDate", "terminationReason"];
+            v.HiddenChildren = ["shift-assignments", "attendance-records", "salary-records"];
+            v.Links.Add(new HeaderLink("Organizasyon şeması", "Org chart", "/hr/org-chart", Icons.Material.Filled.AccountTree));
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "İşten çıkış", LabelEn = "Terminate", Icon = Icons.Material.Filled.PersonOff, Color = Color.Error, Permission = "employees:update",
+                Visible = ResourceAction.StatusIn("ACTIVE"), Run = Components.Pages.Hr.TerminateDialog.OpenAsync,
+            });
+        });
+        Configure("departments", v => v.Columns = ["code", "name", "parentId", "managerId", "isActive"]);
+        Configure("positions", v => v.Columns = ["code", "name", "departmentId", "isActive"]);
+        Configure("leave-requests", v =>
+        {
+            v.Columns = ["number", "employeeId", "leaveTypeId", "startDate", "endDate", "days", "status", "createdAt"];
+            v.FilterFields = ["status", "employeeId", "leaveTypeId", "startDate"];
+            v.CreateDialog = typeof(Components.Pages.Hr.LeaveRequestDialog);
+            v.HideEdit = v.HideDelete = true;
+            v.WorkflowEntity = "LeaveRequest";
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "İptal et", LabelEn = "Cancel", Icon = Icons.Material.Filled.Cancel, Color = Color.Error,
+                Visible = ResourceAction.StatusIn("PENDING", "APPROVED"), Endpoint = "/api/hr/leave-requests/{id}/cancel",
+                Prompt = "Açıklama", Confirm = "Talep iptal edilecek; onaylanmış izinlerde günler bakiyeye iade edilir.",
+            });
+        });
+        Configure("leave-types", v =>
+        {
+            v.Columns = ["code", "name", "defaultDays", "isPaid", "requiresBalance", "color", "isActive"];
+            v.Links.Add(new HeaderLink("İzin bakiyeleri", "Balances", "/hr/leave-balances", Icons.Material.Filled.AccountBalanceWallet));
+            v.Links.Add(new HeaderLink("Resmi tatiller", "Public holidays", "/r/holidays", Icons.Material.Filled.Celebration));
+        });
+        Configure("holidays", v => v.Columns = ["date", "name"]);
+        Configure("leave-balances", v => v.Columns = ["employeeId", "leaveTypeId", "year", "entitledDays", "usedDays"]);
+        Configure("shifts", v =>
+        {
+            v.Columns = ["code", "name", "startTime", "endTime", "breakMinutes", "color", "isActive"];
+            v.Links.Add(new HeaderLink("Haftalık plan", "Weekly plan", "/hr/shift-plan", Icons.Material.Filled.CalendarViewWeek));
+            v.Links.Add(new HeaderLink("Puantaj", "Timesheet", "/hr/timesheet", Icons.Material.Filled.GridOn));
+        });
     }
 
     static void Platform()

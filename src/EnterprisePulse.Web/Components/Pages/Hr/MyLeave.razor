@@ -1,0 +1,107 @@
+@page "/hr/my-leave"
+@inherits AppPage
+
+<PageTitle>@T("İzinlerim", "My leave") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("İzinlerim", "My leave")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("İzin bakiyeniz ve talepleriniz", "Your leave balance and requests")</MudText>
+    </div>
+    @if (_hasEmployee)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Create">@T("Yeni talep", "New request")</MudButton>
+    }
+</div>
+
+@if (!_hasEmployee)
+{
+    <MudAlert Severity="Severity.Info">@T("Hesabınıza bağlı bir personel kaydı yok. İK ile iletişime geçin.", "No employee record is linked to your account. Please contact HR.")</MudAlert>
+    return;
+}
+
+<MudGrid Spacing="3" Class="mb-4">
+    @foreach (var b in _balances)
+    {
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-4" Elevation="1" Style='@($"border-left:4px solid {b!["leaveTypeColor"]}")'>
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@b["leaveTypeName"] · @b["year"]</MudText>
+                <MudText Typo="Typo.h4">@b["remainingDays"] <small class="ep-muted">@T("gün kaldı", "days left")</small></MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @T($"Hak: {b["entitledDays"]} · Kullanılan: {b["usedDays"]} · Bekleyen: {b["pendingDays"]}",
+                       $"Entitled: {b["entitledDays"]} · Used: {b["usedDays"]} · Pending: {b["pendingDays"]}")
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+<MudTable Items="_requests" Dense="true" Hover="true" Elevation="1" Loading="_loading" Class="ep-clickable" OnRowClick="(TableRowClickEventArgs<JsonObject> e) => Open(e.Item!)">
+    <HeaderContent>
+        <MudTh>@T("Numara", "Number")</MudTh>
+        <MudTh>@T("Tür", "Type")</MudTh>
+        <MudTh>@T("Tarih", "Dates")</MudTh>
+        <MudTh Style="text-align:right">@T("Gün", "Days")</MudTh>
+        <MudTh>@L("status")</MudTh>
+        <MudTh />
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context["number"]</MudTd>
+        <MudTd><span class="ep-dot" style='background:@context["leaveTypeColor"]'></span>@context["leaveTypeName"]</MudTd>
+        <MudTd>@Day(context["startDate"]) – @Day(context["endDate"])</MudTd>
+        <MudTd Style="text-align:right">@context["days"]</MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small" Color='Fmt.StatusColor(context["status"]?.ToString())'>@Meta.EnumLabel("LeaveRequestStatus", context["status"]?.ToString(), Locale)</MudChip></MudTd>
+        <MudTd Style="text-align:right" @onclick:stopPropagation="true">
+            @if (HrUi.Bool(context["canCancel"]))
+            {
+                <MudButton Size="Size.Small" Color="Color.Error" StartIcon="@Icons.Material.Filled.Cancel" OnClick="() => Cancel(context)">
+                    @(context["status"]?.ToString() == "PENDING" ? L("withdraw") : L("cancel"))
+                </MudButton>
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@T("Henüz izin talebiniz yok", "You have no leave requests yet")</MudText></NoRecordsContent>
+</MudTable>
+
+@code {
+    private JsonArray _balances = [];
+    private List<JsonObject> _requests = [];
+    private bool _loading = true;
+    private bool _hasEmployee = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hasEmployee = Session.Me?.User.EmployeeId != null;
+        if (_hasEmployee) await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        await Run(async () =>
+        {
+            _balances = await Api.GetAsync<JsonArray>($"/api/hr/leave-balances?year={DateTime.Today.Year}");
+            var res = await Api.GetJsonAsync("/api/hr/leave-requests?mine=true&pageSize=200");
+            _requests = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
+        });
+        _loading = false;
+    }
+
+    private static string Day(JsonNode? node) => DateTime.TryParse(node?.ToString(), out var d) ? d.ToString("dd.MM.yyyy") : "";
+
+    private async Task Create()
+    {
+        if (await LeaveRequestDialog.OpenAsync(Dialogs, onBehalf: false)) await Load();
+    }
+
+    private async Task Cancel(JsonObject row)
+    {
+        var comment = await PromptDialog.AskAsync(Dialogs, T("Talebi iptal et", "Cancel request"), L("comment"), okText: L("yes"), color: Color.Error);
+        if (comment == null) return;
+        if (await Run(() => Api.PostAsync<JsonObject>($"/api/hr/leave-requests/{row["id"]}/cancel", new { comment }), L("saved"))) await Load();
+    }
+
+    private void Open(JsonObject row)
+    {
+        if (row["workflowInstanceId"]?.ToString() is { Length: > 0 } id) Nav.NavigateTo($"/workflow/instances/{id}");
+    }
+}

@@ -1,0 +1,102 @@
+@page "/hr/leave-balances"
+@inherits AppPage
+
+<PageTitle>@T("İzin bakiyeleri", "Leave balances") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/leave-types" />
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("İzin bakiyeleri", "Leave balances")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Kalan = hak edilen − kullanılan − onay bekleyen", "Remaining = entitled − used − pending")</MudText>
+    </div>
+    <MudTextField T="string" @bind-Value="_search" Placeholder="@L("search")" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Style="max-width:240px" />
+    <MudSelect T="int" Value="_year" ValueChanged="SetYear" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:120px">
+        @foreach (var y in Enumerable.Range(DateTime.Today.Year - 1, 3))
+        {
+            <MudSelectItem T="int" Value="y">@y</MudSelectItem>
+        }
+    </MudSelect>
+    @if (Session.Has("leave:update"))
+    {
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Autorenew" OnClick="Accrue" Disabled="_busy">@T("Eksik bakiyeleri oluştur", "Accrue balances")</MudButton>
+    }
+</div>
+
+<MudTable Items="Rows" Dense="true" Hover="true" Elevation="1" Loading="_loading" RowsPerPage="50">
+    <HeaderContent>
+        <MudTh>@T("Personel", "Employee")</MudTh>
+        <MudTh>@T("Tür", "Type")</MudTh>
+        <MudTh Style="text-align:right">@T("Hak edilen", "Entitled")</MudTh>
+        <MudTh Style="text-align:right">@T("Kullanılan", "Used")</MudTh>
+        <MudTh Style="text-align:right">@T("Bekleyen", "Pending")</MudTh>
+        <MudTh Style="text-align:right">@T("Kalan", "Remaining")</MudTh>
+        <MudTh />
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context["employeeName"]</MudTd>
+        <MudTd><span class="ep-dot" style='background:@context["leaveTypeColor"]'></span>@context["leaveTypeName"]</MudTd>
+        <MudTd Style="text-align:right">@context["entitledDays"]</MudTd>
+        <MudTd Style="text-align:right">@context["usedDays"]</MudTd>
+        <MudTd Style="text-align:right">@context["pendingDays"]</MudTd>
+        <MudTd Style="text-align:right"><b>@context["remainingDays"]</b></MudTd>
+        <MudTd Style="text-align:right">
+            @if (Session.Has("leave:update"))
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => Edit(context)" />
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@L("noRecords")</MudText></NoRecordsContent>
+    <PagerContent><MudTablePager PageSizeOptions="[25, 50, 100]" /></PagerContent>
+</MudTable>
+
+@code {
+    private int _year = DateTime.Today.Year;
+    private List<JsonObject> _rows = [];
+    private string? _search;
+    private bool _loading = true, _busy;
+
+    private IEnumerable<JsonObject> Rows => string.IsNullOrWhiteSpace(_search)
+        ? _rows
+        : _rows.Where(r => r["employeeName"]!.ToString().Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task SetYear(int year)
+    {
+        _year = year;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        await Run(async () => _rows = (await Api.GetAsync<JsonArray>($"/api/hr/leave-balances?year={_year}")).Select(n => n!.AsObject()).ToList());
+        _loading = false;
+    }
+
+    private async Task Accrue()
+    {
+        _busy = true;
+        await Run(async () =>
+        {
+            var res = await Api.PostAsync<JsonObject>("/api/hr/leave-balances/accrue", new { year = _year });
+            Snackbar.Add(T($"{res["created"]} bakiye oluşturuldu", $"{res["created"]} balance(s) created"), Severity.Success);
+        });
+        _busy = false;
+        await Load();
+    }
+
+    private async Task Edit(JsonObject row)
+    {
+        var value = await PromptDialog.AskAsync(Dialogs, $"{row["employeeName"]} · {row["leaveTypeName"]}", T("Hak edilen gün", "Entitled days"), true,
+            T($"Şu an: {row["entitledDays"]} gün", $"Currently {row["entitledDays"]} days"), L("save"));
+        if (value == null) return;
+        if (!int.TryParse(value, out var days))
+        {
+            Snackbar.Add(T("Sayı girin", "Enter a number"), Severity.Warning);
+            return;
+        }
+        if (await Run(() => Api.PatchAsync<JsonObject>($"/api/hr/leave-balances/{row["id"]}", new { entitledDays = days }), L("saved"))) await Load();
+    }
+}

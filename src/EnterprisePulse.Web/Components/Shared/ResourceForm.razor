@@ -46,7 +46,7 @@
     private IEnumerable<FieldMeta> Fields => Resource.Fields.Where(f =>
         !f.Hidden && !View.HiddenFields.Contains(f.Name) && !FixedFields.Contains(f.Name) &&
         (ShowSystem && !IsNew ? f.Name is not ("companyId" or "deletedAt") : !f.IsSystem) &&
-        (!IsNew || Editable(f)) && !(IsNew && f.Name == "number" && Resource.Sequence != null));
+        (!IsNew || Editable(f)) && !(IsNew && f.Name == Resource.SequenceField));
 
     private bool Editable(FieldMeta f)
     {
@@ -54,7 +54,7 @@
         if (f.ReadOnly) return IsNew && Resource.CompositeKey?.Contains(f.Name) == true;
         if (!IsNew && Resource.CompositeKey?.Contains(f.Name) == true) return false;
         if (!IsNew && f.Name == "status" && Resource.DraftLocked) return false;
-        if (!IsNew && f.Name == "number" && Resource.Sequence != null) return false;
+        if (!IsNew && f.Name == Resource.SequenceField) return false;
         return true;
     }
 

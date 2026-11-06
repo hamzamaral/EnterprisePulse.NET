@@ -68,6 +68,12 @@ public sealed class ResourceMeta
 
     public FieldMeta? Field(string name) => Fields.FirstOrDefault(f => f.Name == name);
 
+    /// <summary>Field filled from <see cref="Sequence"/> when left empty on create.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public FieldMeta? SequenceField => Sequence == null ? null : SequenceFieldNames.Select(Field).FirstOrDefault(f => f != null);
+
+    public static readonly string[] SequenceFieldNames = ["number", "employeeNo", "assetTag", "code"];
+
     public string PermissionFor(string action, IReadOnlyDictionary<string, string[]> registry)
     {
         if (!registry.TryGetValue(Module, out var actions)) return $"{Module}:{action}";

@@ -61,6 +61,7 @@ public sealed class ResourceMeta
     public FieldMeta? Field(string name) => Fields.FirstOrDefault(f => f.Name == name);
     public string KeyField => Field("id") != null ? "id" : Field("code") != null ? "code" : Fields[0].Name;
     public bool DraftLocked => DraftOnly && Children.Count > 0;
+    public string? SequenceField => Sequence == null ? null : new[] { "number", "employeeNo", "assetTag", "code" }.FirstOrDefault(n => Field(n) != null);
 
     public string PermissionFor(string action, IReadOnlyDictionary<string, string[]> registry)
     {

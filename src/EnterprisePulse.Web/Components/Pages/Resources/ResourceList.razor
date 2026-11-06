@@ -24,6 +24,10 @@
             <MudIconButton Icon="@Icons.Material.Filled.FilterList" OnClick="() => _showFilters = !_showFilters" Variant="@(_showFilters ? Variant.Filled : Variant.Outlined)" Size="Size.Medium" />
         </MudBadge>
     }
+    @foreach (var link in View.Links.Where(l => l.Permission == null || Session.Has(l.Permission)))
+    {
+        <MudButton Variant="Variant.Outlined" StartIcon="@link.Icon" Href="@link.Href">@T(link.Label, link.LabelEn)</MudButton>
+    }
     <MudMenu Icon="@Icons.Material.Filled.Download" Variant="Variant.Outlined" Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
         <MudMenuItem OnClick='() => Export("xlsx")' Icon="@Icons.Material.Filled.TableView">Excel (.xlsx)</MudMenuItem>
         <MudMenuItem OnClick='() => Export("pdf")' Icon="@Icons.Material.Filled.PictureAsPdf">PDF</MudMenuItem>

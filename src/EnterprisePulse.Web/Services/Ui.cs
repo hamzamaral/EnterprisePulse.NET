@@ -138,12 +138,13 @@ public static class Features
 {
     public static readonly HashSet<string> Groups =
     [
-        "Genel", "Onay Süreçleri", "Organizasyon", "Sistem",
+        "Genel", "İnsan Kaynakları", "Onay Süreçleri", "Organizasyon", "Sistem",
     ];
 
     public static readonly HashSet<string> Pages =
     [
         "", "workflow/inbox", "roles", "settings",
+        "hr/my-leave", "hr/my-attendance", "hr/org-chart", "hr/timesheet",
     ];
 
     public static bool Enabled(NavGroupMeta g) => Groups.Contains(g.Label.Tr);

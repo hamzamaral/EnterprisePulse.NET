@@ -1,0 +1,144 @@
+@page "/hr/timesheet"
+@inherits AppPage
+
+<PageTitle>@T("Puantaj", "Timesheet") · EnterprisePulse</PageTitle>
+@if (!Session.Has("attendance:read"))
+{
+    <MudAlert Severity="Severity.Error">@L("forbidden")</MudAlert>
+    return;
+}
+<div class="ep-page-header">
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("Puantaj", "Timesheet")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Aylık devam durumu; hücreye tıklayarak düzeltme yapabilirsiniz", "Monthly attendance; click a cell to correct it")</MudText>
+    </div>
+    <div style="min-width:220px"><RefPicker Resource="departments" Value="@_departmentId" ValueChanged="SetDepartment" Label="@T("Departman", "Department")" /></div>
+    <MudDatePicker Date="_month" DateChanged="SetMonth" OpenTo="OpenTo.Month" FixDay="1" DateFormat="MMMM yyyy" Culture="Fmt.Culture(Locale)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:190px" />
+    <MudMenu Icon="@Icons.Material.Filled.Download" Variant="Variant.Outlined" Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+        <MudMenuItem OnClick='() => Export("xlsx")' Icon="@Icons.Material.Filled.TableView">Excel (.xlsx)</MudMenuItem>
+        <MudMenuItem OnClick='() => Export("pdf")' Icon="@Icons.Material.Filled.PictureAsPdf">PDF</MudMenuItem>
+    </MudMenu>
+</div>
+
+@if (_data == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<MudGrid Spacing="2" Class="mb-3">
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Personel", "Employees")</MudText><MudText Typo="Typo.h5">@Rows.Count</MudText></MudPaper></MudItem>
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Çalışılan saat", "Worked hours")</MudText><MudText Typo="Typo.h5">@HrUi.Minutes(Sum("workedMinutes"))</MudText></MudPaper></MudItem>
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Fazla mesai", "Overtime")</MudText><MudText Typo="Typo.h5">@HrUi.Minutes(Sum("overtimeMinutes"))</MudText></MudPaper></MudItem>
+    <MudItem xs="6" md="3"><MudPaper Class="pa-3" Elevation="1"><MudText Typo="Typo.caption" Color="Color.Secondary">@T("Geç / devamsız gün", "Late / absent days")</MudText><MudText Typo="Typo.h5">@Sum("lateDays") / @Sum("absentDays")</MudText></MudPaper></MudItem>
+</MudGrid>
+
+<MudPaper Elevation="1" Class="ep-sheet-wrap">
+    <table class="ep-sheet">
+        <thead>
+            <tr>
+                <th class="ep-sheet-name">@T("Personel", "Employee")</th>
+                @foreach (var d in DayDates)
+                {
+                    <th class="@(d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "ep-weekend" : "") @(d.ToString("yyyy-MM-dd") == _today ? "ep-today" : "")">
+                        <div>@d.Day</div><small>@d.ToString("ddd", Fmt.Culture(Locale))[..2]</small>
+                    </th>
+                }
+                <th title="@T("Gelinen / planlı gün", "Present / planned days")">@T("Gün", "Days")</th>
+                <th>@T("Saat", "Hours")</th>
+                <th>@T("FM", "OT")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Rows)
+            {
+                var totals = row["totals"]!;
+                <tr>
+                    <td class="ep-sheet-name">
+                        <div><b>@row["employeeName"]</b></div>
+                        <small class="ep-muted">@(row["departmentName"]?.ToString() ?? row["employeeNo"]!.ToString())</small>
+                    </td>
+                    @foreach (var day in row["days"]!.AsArray())
+                    {
+                        var status = day!["status"]?.ToString();
+                        <td class="@HrUi.DayClass(status) @(CanEdit ? "ep-click" : "")" title="@Tip(day)" @onclick="() => Edit(row, day)"
+                            style="@(day["shiftColor"] is { } c ? $"box-shadow: inset 0 -3px 0 {c}" : "")">
+                            @HrUi.DayShort(status)
+                        </td>
+                    }
+                    <td class="ep-num">@totals["presentDays"]/@totals["plannedDays"]</td>
+                    <td class="ep-num">@HrUi.Minutes(HrUi.Int(totals["workedMinutes"]))</td>
+                    <td class="ep-num">@HrUi.Minutes(HrUi.Int(totals["overtimeMinutes"]))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</MudPaper>
+<div class="ep-legend mt-2">
+    @foreach (var s in HrUi.DayStatuses)
+    {
+        <span><span class="@HrUi.DayClass(s)">@HrUi.DayShort(s)</span> @HrUi.DayLabel(s, Locale)</span>
+    }
+</div>
+
+@code {
+    private JsonObject? _data;
+    private DateTime? _month = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private string? _departmentId;
+    private string _today = "";
+
+    private bool CanEdit => Session.Has("attendance:update");
+    private List<JsonObject> Rows => _data!["rows"]!.AsArray().Select(r => r!.AsObject()).ToList();
+    private IEnumerable<DateTime> DayDates => _data!["days"]!.AsArray().Select(d => DateTime.Parse(d!.ToString()));
+    private int Sum(string key) => Rows.Sum(r => r["totals"]![key]!.GetValue<int>());
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.Has("attendance:read")) await Load();
+    }
+
+    private string Query => $"month={_month:yyyy-MM}{(_departmentId != null ? "&departmentId=" + _departmentId : "")}";
+
+    private async Task Load()
+    {
+        await Run(async () => _data = await Api.GetJsonAsync($"/api/hr/attendance/timesheet?{Query}"));
+        _today = _data?["today"]?.ToString() ?? "";
+    }
+
+    private async Task SetMonth(DateTime? month)
+    {
+        _month = month ?? _month;
+        await Load();
+    }
+
+    private async Task SetDepartment(string? id)
+    {
+        _departmentId = id;
+        await Load();
+    }
+
+    private Task Export(string format) => Run(() => Api.DownloadAsync($"/api/hr/attendance/timesheet/export?{Query}&format={format}", $"puantaj-{_month:yyyy-MM}.{format}"));
+
+    private string Tip(JsonNode day)
+    {
+        var parts = new List<string> { DateTime.Parse(day["date"]!.ToString()).ToString("dd.MM.yyyy"), HrUi.DayLabel(day["status"]?.ToString(), Locale) };
+        if (day["plannedStart"] is { } s) parts.Add($"{T("Plan", "Plan")} {s}–{day["plannedEnd"]}");
+        if (day["checkIn"] != null) parts.Add($"{day["checkIn"]}–{day["checkOut"]?.ToString() ?? "?"}");
+        if (HrUi.Int(day["lateMinutes"]) > 0) parts.Add($"{T("Geç", "Late")} {day["lateMinutes"]} {T("dk", "min")}");
+        if (HrUi.Int(day["overtimeMinutes"]) > 0) parts.Add($"{T("FM", "OT")} {HrUi.Minutes(HrUi.Int(day["overtimeMinutes"]))}");
+        if (day["note"] is { } n) parts.Add(n.ToString());
+        return string.Join(" · ", parts);
+    }
+
+    private async Task Edit(JsonObject row, JsonNode day)
+    {
+        if (!CanEdit) return;
+        var dialog = await Dialogs.ShowAsync<AttendanceRecordDialog>(null, new DialogParameters<AttendanceRecordDialog>
+        {
+            { x => x.EmployeeId, row["employeeId"]!.ToString() },
+            { x => x.EmployeeName, row["employeeName"]!.ToString() },
+            { x => x.Day, day },
+        }, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        if (await dialog.Result is { Canceled: false }) await Load();
+    }
+}

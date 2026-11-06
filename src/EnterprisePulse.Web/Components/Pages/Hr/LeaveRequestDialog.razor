@@ -1,0 +1,99 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Yeni izin talebi", "New leave request")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            @if (OnBehalf)
+            {
+                <MudItem xs="12">
+                    <RefPicker Resource="employees" @bind-Value="_employeeId" Label="@T("Personel", "Employee")" Required="true"
+                               HelperText="@T("Boş bırakılırsa kendiniz için talep oluşturulur", "Leave empty to request for yourself")" />
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudSelect T="string" @bind-Value="_typeId" Label="@T("İzin türü", "Leave type")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                    @foreach (var t in _types)
+                    {
+                        <MudSelectItem T="string" Value='@t!["id"]!.ToString()'>
+                            <span class="ep-dot" style='background:@t!["color"]'></span>@t!["name"]
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker Date="_start" DateChanged="d => SetRange(d, _end)" Label="@T("Başlangıç", "Start")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker Date="_end" DateChanged="d => SetRange(_start, d)" Label="@T("Bitiş", "End")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" MinDate="_start" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense="true" Icon="@Icons.Material.Filled.CalendarMonth">
+                    @if (_days == null) { @T("Tarih aralığı seçin", "Pick a date range") }
+                    else { @T($"{_days} iş günü (hafta sonu ve resmi tatiller hariç)", $"{_days} working day(s), excluding weekends and holidays") }
+                </MudAlert>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_reason" Label="@T("Açıklama", "Reason")" Lines="3" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || _typeId == null || _days is null or 0">@L("send")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    /// <summary>Lets HR pick the employee; defaults to the <c>leave:create</c> permission (list screen).</summary>
+    [Parameter] public bool? Behalf { get; set; }
+    private bool OnBehalf => Behalf ?? Session.Has("leave:create");
+
+    private JsonArray _types = [];
+    private string? _employeeId, _typeId, _reason;
+    private DateTime? _start = DateTime.Today, _end = DateTime.Today;
+    private int? _days;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Run(async () => _types = await Api.GetAsync<JsonArray>("/api/hr/leave-types"));
+        await SetRange(_start, _end);
+    }
+
+    private async Task SetRange(DateTime? start, DateTime? end)
+    {
+        _start = start;
+        _end = end != null && start != null && end < start ? start : end;
+        _days = null;
+        if (_start == null || _end == null) return;
+        await Run(async () =>
+        {
+            var res = await Api.GetJsonAsync($"/api/hr/leave-requests/working-days?startDate={_start:yyyy-MM-dd}&endDate={_end:yyyy-MM-dd}");
+            _days = res["days"]!.GetValue<int>();
+        });
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        var ok = await Run(() => Api.PostAsync<JsonObject>("/api/hr/leave-requests", new
+        {
+            employeeId = OnBehalf && _employeeId != null ? Guid.Parse(_employeeId) : (Guid?)null,
+            leaveTypeId = Guid.Parse(_typeId!),
+            startDate = _start!.Value.ToString("yyyy-MM-dd"),
+            endDate = _end!.Value.ToString("yyyy-MM-dd"),
+            reason = _reason,
+        }), T("İzin talebiniz oluşturuldu", "Leave request created"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    public static async Task<bool> OpenAsync(IDialogService dialogs, bool onBehalf = false)
+    {
+        var dialog = await dialogs.ShowAsync<LeaveRequestDialog>(null, new DialogParameters<LeaveRequestDialog> { { x => x.Behalf, onBehalf } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        return await dialog.Result is { Canceled: false };
+    }
+}

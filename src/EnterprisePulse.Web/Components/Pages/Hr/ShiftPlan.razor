@@ -1,0 +1,165 @@
+@page "/hr/shift-plan"
+@inherits AppPage
+
+<PageTitle>@T("Vardiya planı", "Shift plan") · EnterprisePulse</PageTitle>
+@if (!Session.Has("attendance:read"))
+{
+    <MudAlert Severity="Severity.Error">@L("forbidden")</MudAlert>
+    return;
+}
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/shifts" />
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("Haftalık vardiya planı", "Weekly shift plan")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Plan girilmeyen hafta içi günler standart 09:00–18:00 sayılır", "Weekdays without a plan follow the standard 09:00–18:00")</MudText>
+    </div>
+    <div style="min-width:220px"><RefPicker Resource="departments" Value="@_departmentId" ValueChanged="SetDepartment" Label="@T("Departman", "Department")" /></div>
+</div>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Variant="Variant.Outlined" OnClick="() => Move(-7)" />
+    <MudButton Variant="Variant.Outlined" OnClick="ThisWeek">@T("Bu hafta", "This week")</MudButton>
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Variant="Variant.Outlined" OnClick="() => Move(7)" />
+    <MudText Typo="Typo.subtitle1" Class="ep-grow"><b>@_monday.ToString("dd MMM", Fmt.Culture(Locale)) – @_monday.AddDays(6).ToString("dd MMM yyyy", Fmt.Culture(Locale))</b></MudText>
+    @if (CanEdit)
+    {
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="CopyPreviousWeek" Disabled="_busy">@T("Önceki haftayı kopyala", "Copy previous week")</MudButton>
+    }
+</MudStack>
+
+@if (_plan == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+<MudPaper Elevation="1" Class="ep-sheet-wrap">
+    <table class="ep-sheet ep-plan">
+        <thead>
+            <tr>
+                <th class="ep-sheet-name">@T("Personel", "Employee")</th>
+                @foreach (var d in Week)
+                {
+                    <th class="@(Weekend(d) ? "ep-weekend" : "")">@d.ToString("ddd dd.MM", Fmt.Culture(Locale))</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var e in _plan["employees"]!.AsArray())
+            {
+                var employeeId = e!["id"]!.ToString();
+                <tr>
+                    <td class="ep-sheet-name">
+                        <div><b>@e["name"]</b></div>
+                        <small class="ep-muted">@(e["departmentName"]?.ToString() ?? e["employeeNo"]!.ToString())</small>
+                    </td>
+                    @foreach (var d in Week)
+                    {
+                        var value = ValueOf(employeeId, d);
+                        <td>
+                            <select class="ep-select" disabled="@(!CanEdit || _busy)" value="@value" style="border-left-color:@ColorOf(value)"
+                                    @onchange="ev => Change(employeeId, d, ev.Value?.ToString())">
+                                <option value="@Default">@(Weekend(d) ? T("Hafta sonu", "Weekend") : T("Standart", "Standard"))</option>
+                                <option value="@Off">@T("Tatil günü", "Day off")</option>
+                                @foreach (var s in _shifts.Where(s => HrUi.Bool(s["isActive"]) || s["id"]!.ToString() == value))
+                                {
+                                    <option value='@s["id"]'>@s["name"] @s["startTime"]–@s["endTime"]</option>
+                                }
+                            </select>
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</MudPaper>
+
+@code {
+    private const string Default = "__default__";
+    private const string Off = "__off__";
+
+    private DateOnly _monday = MondayOf(DateOnly.FromDateTime(DateTime.Today));
+    private string? _departmentId;
+    private JsonObject? _plan;
+    private List<JsonObject> _shifts = [];
+    private bool _busy;
+
+    private bool CanEdit => Session.Has("attendance:update");
+    private IEnumerable<DateOnly> Week => Enumerable.Range(0, 7).Select(i => _monday.AddDays(i));
+    private static bool Weekend(DateOnly d) => d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+    private static DateOnly MondayOf(DateOnly d) => d.AddDays(-(((int)d.DayOfWeek + 6) % 7));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.Has("attendance:read")) return;
+        await Run(async () =>
+        {
+            var res = await Api.GetJsonAsync("/api/r/shifts?pageSize=100&sort=startTime&order=asc");
+            _shifts = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
+        });
+        await Load();
+    }
+
+    private string Query(DateOnly monday) =>
+        $"from={monday:yyyy-MM-dd}&to={monday.AddDays(6):yyyy-MM-dd}{(_departmentId != null ? "&departmentId=" + _departmentId : "")}";
+
+    private async Task Load() => await Run(async () => _plan = await Api.GetJsonAsync($"/api/hr/shift-plan?{Query(_monday)}"));
+
+    private JsonNode? EntryOf(string employeeId, DateOnly d) =>
+        _plan!["entries"]!.AsArray().FirstOrDefault(x => x!["employeeId"]!.ToString() == employeeId && x["date"]!.ToString() == d.ToString("yyyy-MM-dd"));
+
+    private string ValueOf(string employeeId, DateOnly d) => EntryOf(employeeId, d) is { } e ? e["shiftId"]?.ToString() ?? Off : Default;
+
+    private string ColorOf(string value) => _shifts.FirstOrDefault(s => s["id"]!.ToString() == value)?["color"]?.ToString() ?? "transparent";
+
+    private async Task Move(int days)
+    {
+        _monday = _monday.AddDays(days);
+        await Load();
+    }
+
+    private async Task ThisWeek()
+    {
+        _monday = MondayOf(DateOnly.FromDateTime(DateTime.Today));
+        await Load();
+    }
+
+    private async Task SetDepartment(string? id)
+    {
+        _departmentId = id;
+        await Load();
+    }
+
+    private async Task Change(string employeeId, DateOnly d, string? value)
+    {
+        object entry = value == Default
+            ? new { employeeId, date = d.ToString("yyyy-MM-dd"), shiftId = (string?)null, useDefault = true }
+            : new { employeeId, date = d.ToString("yyyy-MM-dd"), shiftId = value == Off ? null : value, useDefault = false };
+        await Save([entry], null);
+    }
+
+    private async Task CopyPreviousWeek()
+    {
+        JsonObject? previous = null;
+        if (!await Run(async () => previous = await Api.GetJsonAsync($"/api/hr/shift-plan?{Query(_monday.AddDays(-7))}"))) return;
+        var entries = new List<object>();
+        foreach (var e in _plan!["employees"]!.AsArray())
+        {
+            var employeeId = e!["id"]!.ToString();
+            foreach (var d in Week)
+            {
+                var source = previous!["entries"]!.AsArray().FirstOrDefault(x => x!["employeeId"]!.ToString() == employeeId && x["date"]!.ToString() == d.AddDays(-7).ToString("yyyy-MM-dd"));
+                entries.Add(source != null
+                    ? new { employeeId, date = d.ToString("yyyy-MM-dd"), shiftId = source["shiftId"]?.ToString(), useDefault = false }
+                    : new { employeeId, date = d.ToString("yyyy-MM-dd"), shiftId = (string?)null, useDefault = true });
+            }
+        }
+        if (entries.Count > 0) await Save(entries, T("Önceki hafta kopyalandı", "Previous week copied"));
+    }
+
+    private async Task Save(List<object> entries, string? message)
+    {
+        _busy = true;
+        if (await Run(() => Api.PutAsync<JsonObject>("/api/hr/shift-plan", new { entries }), message)) await Load();
+        _busy = false;
+    }
+}
