@@ -1,0 +1,50 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Yeni sayım", "New count")</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@T("Kapsamdaki tüm aktif demirbaşlar, o anki sorumlularıyla sayım listesine alınır.", "Every in-service asset in scope is listed with its current holder.")</MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_date" Label="@T("Sayım tarihi", "Count date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" />
+            <MudItem xs="12" sm="6">
+                <RefPicker Resource="asset-locations" @bind-Value="_locationId" Label="@T("Konum (isteğe bağlı)", "Location (optional)")" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <RefPicker Resource="asset-categories" @bind-Value="_categoryId" Label="@T("Kategori (isteğe bağlı)", "Category (optional)")" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || _date == null">@T("Sayımı başlat", "Start count")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private DateTime? _date = DateTime.Today;
+    private string? _locationId;
+    private string? _categoryId;
+    private string? _notes;
+    private bool _busy;
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? count = null;
+        var ok = await Run(async () => count = await Api.PostAsync<JsonObject>("/api/assets/counts",
+            new { countDate = AssetUi.Iso(_date), locationId = _locationId, categoryId = _categoryId, notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes }));
+        _busy = false;
+        if (!ok) return;
+        Snackbar.Add(T($"{count!["number"]} numaralı sayım başlatıldı", $"Count {count["number"]} started"), Severity.Success);
+        MudDialog.Close(DialogResult.Ok(true));
+        Nav.NavigateTo($"/assets/counts/{count["id"]}");
+    }
+}

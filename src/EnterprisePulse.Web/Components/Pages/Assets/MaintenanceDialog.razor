@@ -1,0 +1,96 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@(Maintenance == null ? T("Bakım / onarım kaydı", "Maintenance record") : T("Bakımı tamamla", "Complete maintenance"))</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            @if (Maintenance == null)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="string" @bind-Value="_type" Label="@T("Tür", "Type")" ToStringFunc="@(v => Meta.EnumLabel("MaintenanceType", v, Locale))" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var t in new[] { "REPAIR", "SERVICE", "INSPECTION" })
+                        {
+                            <MudSelectItem T="string" Value="t">@Meta.EnumLabel("MaintenanceType", t, Locale)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_date" Label="@T("Başlangıç", "Started on")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_title" Label="@T("Başlık", "Title")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_vendor" Label="@T("Servis / tedarikçi", "Vendor")" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Maintenance["title"] · @AssetUi.Day(Maintenance["startedAt"])</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_date" Label="@T("Tamamlanma", "Completed on")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Required="true" />
+                </MudItem>
+            }
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal?" @bind-Value="_cost" Label="@T("Maliyet", "Cost")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Format="N2" Culture="Fmt.Tr" HideSpinButtons="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="@T("Açıklama", "Description")" Lines="3" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+        @if (Maintenance == null && StartsMaintenance)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">@T("Depodaki demirbaş, açık bakım kaydı oluşunca 'Bakımda' durumuna geçer.", "An in-stock asset moves to 'In maintenance' while the record is open.")</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || _date == null || (Maintenance == null && string.IsNullOrWhiteSpace(_title))">@L("save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string AssetId { get; set; } = "";
+    [Parameter] public JsonObject? Maintenance { get; set; }
+    [Parameter] public bool StartsMaintenance { get; set; }
+
+    private string _type = "REPAIR";
+    private DateTime? _date = DateTime.Today;
+    private string? _title;
+    private string? _vendor;
+    private decimal? _cost;
+    private string? _description;
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        if (Maintenance == null) return;
+        _cost = Maintenance["cost"] == null ? null : AssetUi.Dec(Maintenance["cost"]);
+        _description = Maintenance["description"]?.ToString();
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        var description = string.IsNullOrWhiteSpace(_description) ? null : _description;
+        var ok = await Run(() => Maintenance == null
+            ? Api.PostAsync<JsonObject>($"/api/assets/{AssetId}/maintenances",
+                new { type = _type, title = _title, description, vendor = string.IsNullOrWhiteSpace(_vendor) ? null : _vendor, cost = _cost, startedAt = AssetUi.Iso(_date) })
+            : Api.PostAsync<JsonObject>($"/api/assets/{AssetId}/maintenances/{Maintenance["id"]}/complete",
+                new { completedAt = AssetUi.Iso(_date), cost = _cost, description }), L("saved"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    public static async Task<bool> OpenAsync(IDialogService dialogs, string assetId, JsonObject? maintenance, bool startsMaintenance = false)
+    {
+        var dialog = await dialogs.ShowAsync<MaintenanceDialog>(null, new DialogParameters<MaintenanceDialog>
+        {
+            { x => x.AssetId, assetId }, { x => x.Maintenance, maintenance }, { x => x.StartsMaintenance, startsMaintenance },
+        }, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        return await dialog.Result is { Canceled: false };
+    }
+}

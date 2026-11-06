@@ -1,0 +1,44 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Hizmet dışı bırak", "Retire asset") · @Caption</MudText></TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">@T("Hizmet dışı bırakılan demirbaş zimmetlenemez ve düzenlenemez.", "A retired asset can no longer be assigned or edited.")</MudAlert>
+        <MudRadioGroup T="string" @bind-Value="_status">
+            <MudRadio T="string" Value="@("RETIRED")" Color="Color.Primary">@Meta.EnumLabel("AssetStatus", "RETIRED", Locale)</MudRadio>
+            <MudRadio T="string" Value="@("LOST")" Color="Color.Primary">@Meta.EnumLabel("AssetStatus", "LOST", Locale)</MudRadio>
+        </MudRadioGroup>
+        <MudTextField @bind-Value="_reason" Label="@T("Gerekçe", "Reason")" Lines="3" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" Required="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="Save" Disabled="_busy || string.IsNullOrWhiteSpace(_reason)">@T("Hizmet dışı bırak", "Retire")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string AssetId { get; set; } = "";
+    [Parameter] public string Caption { get; set; } = "";
+
+    private string _status = "RETIRED";
+    private string? _reason;
+    private bool _busy;
+
+    private async Task Save()
+    {
+        _busy = true;
+        var ok = await Run(() => Api.PostAsync<JsonObject>($"/api/assets/{AssetId}/retire", new { status = _status, reason = _reason }), L("saved"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    public static async Task RunAsync(ActionContext ctx)
+    {
+        var dialog = await ctx.Dialogs.ShowAsync<RetireDialog>(null, new DialogParameters<RetireDialog>
+        {
+            { x => x.AssetId, ctx.Id }, { x => x.Caption, ctx.Record["assetTag"]?.ToString() ?? "" },
+        }, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        if (await dialog.Result is { Canceled: false }) await ctx.Reload();
+    }
+}

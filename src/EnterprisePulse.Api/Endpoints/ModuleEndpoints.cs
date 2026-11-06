@@ -6,5 +6,6 @@ public static class ModuleEndpoints
     public static void MapModules(this IEndpointRouteBuilder app)
     {
         app.MapHr();
+        app.MapAssets();
     }
 }

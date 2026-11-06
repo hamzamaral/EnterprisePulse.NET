@@ -1,0 +1,136 @@
+@inherits AppPage
+
+@if (_asset == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    return;
+}
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="8">
+        <MudPaper Outlined="true" Class="pa-4 mb-3">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">@T("Sorumlu ve garanti", "Holder and warranty")</MudText>
+            <div class="ep-facts">
+                <div class="ep-fact">
+                    <span class="ep-muted">@T("Sorumlu", "Holder")</span>
+                    @if (_asset["holder"] is JsonObject h)
+                    {
+                        <span>
+                            <MudLink Href="@($"/assets/assignments/{h["assignmentId"]}")">@h["name"]</MudLink>
+                            <small class="ep-muted"> · @Meta.EnumLabel("AssigneeType", h["type"]?.ToString(), Locale)</small>
+                        </span>
+                    }
+                    else
+                    {
+                        <span>@AssetUi.Text(_asset["locationName"])</span>
+                    }
+                </div>
+                <div class="ep-fact">
+                    <span class="ep-muted">@T("Durum", "Condition")</span>
+                    <span><MudChip T="string" Size="Size.Small" Color='AssetUi.ConditionColor(_asset["condition"]?.ToString())'>@Meta.EnumLabel("AssetCondition", _asset["condition"]?.ToString(), Locale)</MudChip></span>
+                </div>
+                <div class="ep-fact">
+                    <span class="ep-muted">@T("Garanti bitişi", "Warranty ends")</span>
+                    <span>
+                        @AssetUi.Day(_asset["warrantyEndDate"])
+                        @if (AssetUi.Warranty(_asset["warrantyState"]?.ToString()) is { Tr.Length: > 0 } w)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="w.Color" Class="ml-2">@T(w.Tr, w.En)</MudChip>
+                        }
+                    </span>
+                </div>
+            </div>
+        </MudPaper>
+
+        <MudPaper Outlined="true" Class="pa-4">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">@T("Amortisman (doğrusal)", "Depreciation (straight-line)")</MudText>
+            @if (_asset["depreciation"] is not JsonObject dep)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Amortisman için alış tarihi ve maliyeti girilmelidir.", "Purchase date and cost are needed to compute depreciation.")</MudText>
+            }
+            else
+            {
+                <div class="ep-dep-head">
+                    <div>
+                        <div class="ep-muted ep-small">@T("Net defter değeri", "Book value")</div>
+                        <div class="ep-stat-value">@Fmt.Money(AssetUi.Dec(dep["bookValue"]), Currency, Locale)</div>
+                    </div>
+                    <div class="ep-grow">
+                        <MudProgressLinear Value="Progress(dep)" Color="Color.Primary" Rounded="true" Size="Size.Medium" />
+                        <div class="ep-muted ep-small mt-1">
+                            @T($"{dep["elapsedMonths"]} / {dep["usefulLifeMonths"]} ay geçti", $"{dep["elapsedMonths"]} of {dep["usefulLifeMonths"]} months elapsed")
+                            @if (HrUi.Bool(dep["fullyDepreciated"]))
+                            {
+                                <span> · @T("Tamamen amorti edildi", "Fully depreciated")</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="ep-facts mt-3">
+                    <div class="ep-fact"><span class="ep-muted">@T("Alış maliyeti", "Purchase cost")</span><span>@AssetUi.Money(_asset["purchaseCost"], Currency, Locale)</span></div>
+                    <div class="ep-fact"><span class="ep-muted">@T("Hurda değeri", "Salvage value")</span><span>@AssetUi.Money(_asset["salvageValue"], Currency, Locale)</span></div>
+                    <div class="ep-fact"><span class="ep-muted">@T("Aylık amortisman", "Monthly depreciation")</span><span>@AssetUi.Money(dep["monthlyAmount"], Currency, Locale)</span></div>
+                    <div class="ep-fact"><span class="ep-muted">@T("Birikmiş amortisman", "Accumulated")</span><span>@AssetUi.Money(dep["accumulated"], Currency, Locale)</span></div>
+                </div>
+                <MudSimpleTable Dense="true" Class="mt-3" Elevation="0" Outlined="true">
+                    <thead>
+                        <tr>
+                            <th>@T("Yıl", "Year")</th>
+                            <th style="text-align:right">@T("Ay", "Months")</th>
+                            <th style="text-align:right">@T("Amortisman", "Depreciation")</th>
+                            <th style="text-align:right">@T("Yıl sonu defter değeri", "Book value at year end")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var y in dep["schedule"]!.AsArray())
+                        {
+                            <tr class="@(y!["year"]!.GetValue<int>() == DateTime.Today.Year ? "ep-row-current" : "")">
+                                <td>@y["year"]</td>
+                                <td style="text-align:right">@y["months"]</td>
+                                <td style="text-align:right">@Fmt.Money(AssetUi.Dec(y["depreciation"]), null, Locale)</td>
+                                <td style="text-align:right">@Fmt.Money(AssetUi.Dec(y["bookValueEnd"]), null, Locale)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudPaper Outlined="true" Class="pa-4 ep-qr">
+            <MudText Typo="Typo.subtitle1">@T("QR etiketi", "QR label")</MudText>
+            @if (_qr != null)
+            {
+                <img src="@_qr" alt="QR" width="160" height="160" />
+            }
+            <MudText Class="ep-mono">@_asset["assetTag"]</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@_asset["name"]</MudText>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Download" OnClick="Download" Class="mt-2">@T("Etiketi indir", "Download label")</MudButton>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private JsonObject? _asset;
+    private string? _qr;
+    private string Id => Record["id"]!.ToString();
+    private string Currency => _asset?["currency"]?.ToString() ?? "TRY";
+
+    protected override async Task OnParametersSetAsync() => await Run(async () =>
+    {
+        _asset = await Api.GetJsonAsync($"/api/assets/{Id}");
+        _qr ??= "data:image/png;base64," + Convert.ToBase64String(await Api.GetBytesAsync($"/api/assets/{Id}/label"));
+    });
+
+    private static double Progress(JsonObject dep)
+    {
+        var life = dep["usefulLifeMonths"]?.GetValue<int>() ?? 0;
+        return life <= 0 ? 0 : Math.Min(100, 100.0 * (dep["elapsedMonths"]?.GetValue<int>() ?? 0) / life);
+    }
+
+    private Task Download() => Run(() => Api.DownloadAsync($"/api/assets/{Id}/label", $"{_asset!["assetTag"]}.png"));
+}

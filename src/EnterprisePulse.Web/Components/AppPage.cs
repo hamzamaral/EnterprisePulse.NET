@@ -12,7 +12,11 @@ public abstract class AppPage : ComponentBase
     [Inject] protected ISnackbar Snackbar { get; set; } = null!;
     [Inject] protected IDialogService Dialogs { get; set; } = null!;
     [Inject] protected NavigationManager Nav { get; set; } = null!;
-    [CascadingParameter] protected MetadataDocument Meta { get; set; } = null!;
+    [Inject] private MetaCache MetaCache { get; set; } = null!;
+    [CascadingParameter] private MetadataDocument? CascadedMeta { get; set; }
+
+    /// <summary>Dialogs render outside the layout's cascading value, so they fall back to the cached document.</summary>
+    protected MetadataDocument Meta => CascadedMeta ?? MetaCache.Document!;
 
     protected string Locale => Session.Locale;
     protected string L(string key) => Texts.Get(key, Session.Locale);

@@ -1,0 +1,71 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("İade al", "Take back") · @Caption</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_returnedAt" Label="@T("İade tarihi", "Returned on")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_condition" Label="@T("Teslim alınan durum", "Condition on return")" ToStringFunc="@(v => Meta.EnumLabel("AssetCondition", v, Locale))" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                    @foreach (var c in new[] { "NEW", "GOOD", "FAIR", "DAMAGED" })
+                    {
+                        <MudSelectItem T="string" Value="c">@Meta.EnumLabel("AssetCondition", c, Locale)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <RefPicker Resource="asset-locations" @bind-Value="_locationId" Label="@T("İade edilen konum", "Return location")" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Lines="3" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || _returnedAt == null">@T("İade al", "Take back")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string AssetId { get; set; } = "";
+    [Parameter] public string Caption { get; set; } = "";
+    [Parameter] public string Condition { get; set; } = "GOOD";
+    [Parameter] public string? LocationId { get; set; }
+
+    private DateTime? _returnedAt = DateTime.Today;
+    private string _condition = "GOOD";
+    private string? _locationId;
+    private string? _notes;
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        _condition = Condition;
+        _locationId = LocationId;
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        var body = new { returnedAt = AssetUi.Iso(_returnedAt), conditionIn = _condition, locationId = _locationId, returnNotes = string.IsNullOrWhiteSpace(_notes) ? null : _notes };
+        var ok = await Run(() => Api.PostAsync<JsonObject>($"/api/assets/{AssetId}/return", body), T("Demirbaş iade alındı", "Asset returned"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    public static async Task RunAsync(ActionContext ctx)
+    {
+        var dialog = await ctx.Dialogs.ShowAsync<ReturnDialog>(null, new DialogParameters<ReturnDialog>
+        {
+            { x => x.AssetId, ctx.Id },
+            { x => x.Caption, ctx.Record["assetTag"]?.ToString() ?? "" },
+            { x => x.Condition, ctx.Record["condition"]?.ToString() ?? "GOOD" },
+            { x => x.LocationId, ctx.Record["locationId"]?.ToString() },
+        }, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false }) await ctx.Reload();
+    }
+}

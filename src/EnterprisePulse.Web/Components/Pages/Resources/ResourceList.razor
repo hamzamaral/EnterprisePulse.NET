@@ -279,7 +279,8 @@
     private void Open(JsonObject row)
     {
         if (!CanOpen) return;
-        Nav.NavigateTo($"/r/{Resource}/{Uri.EscapeDataString(row[_meta!.KeyField]!.ToString())}");
+        var key = Uri.EscapeDataString(row[_meta!.KeyField]!.ToString());
+        Nav.NavigateTo(View.DetailHref?.Replace("{id}", key) ?? $"/r/{Resource}/{key}");
     }
 
     private async Task RunAction(ResourceAction a, JsonObject row)

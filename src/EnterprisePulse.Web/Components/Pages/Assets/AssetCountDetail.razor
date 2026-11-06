@@ -1,0 +1,296 @@
+@page "/assets/counts/{Id:guid}"
+@inherits AppPage
+
+@if (_count == null)
+{
+    @if (_missing)
+    {
+        <MudAlert Severity="Severity.Warning">@L("notFound")</MudAlert>
+    }
+    else
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    return;
+}
+
+<PageTitle>@T("Sayım", "Count") @_count["number"] · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/asset-counts" Class="ep-no-print" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@T("Sayım", "Count") @_count["number"]</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("AssetCountStatus", Status, Locale)</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Scope · @AssetUi.Day(_count["countDate"])</MudText>
+    </div>
+    <MudStack Row="true" Spacing="2" Class="ep-no-print" Wrap="Wrap.Wrap">
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print" OnClick="Print">@T("Fark raporu", "Variance report")</MudButton>
+        @if (Editable)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Cancel" OnClick="Cancel">@T("Sayımı iptal et", "Cancel count")</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.DoneAll" OnClick="Complete" Disabled="_busy">@T("Sayımı tamamla", "Complete count")</MudButton>
+        }
+    </MudStack>
+</div>
+
+<MudPaper Outlined="true" Class="pa-4 mb-3">
+    <div class="ep-count-stats">
+        <div class="ep-fact">
+            <span class="ep-muted">@T("İlerleme", "Progress")</span>
+            <span>@Found / @Expected</span>
+            <MudProgressLinear Value="@(Expected == 0 ? 0 : 100.0 * Found / Expected)" Color="Color.Success" Rounded="true" />
+        </div>
+        <div class="ep-fact"><span class="ep-muted">@T("Bulunan", "Found")</span><span class="ep-stat-value">@Found</span></div>
+        <div class="ep-fact"><span class="ep-muted">@T("Bulunamayan", "Missing")</span><span class="ep-stat-value" style="@(Missing > 0 ? "color:var(--mud-palette-error)" : "")">@Missing</span></div>
+        <div class="ep-fact"><span class="ep-muted">@T("Beklenmeyen", "Unexpected")</span><span class="ep-stat-value" style="@(Unexpected > 0 ? "color:var(--mud-palette-warning)" : "")">@Unexpected</span></div>
+        <div class="ep-fact">
+            <span class="ep-muted">@T("Sayımı başlatan", "Started by")</span>
+            <span>@_count["createdByName"]</span>
+            @if (_count["completedAt"] != null)
+            {
+                <span class="ep-muted ep-small">@AssetUi.Stamp(_count["completedAt"])</span>
+            }
+        </div>
+    </div>
+    @if (_count["notes"] != null)
+    {
+        <MudText Typo="Typo.body2" Class="mt-3"><span class="ep-muted">@T("Notlar", "Notes"):</span> @_count["notes"]</MudText>
+    }
+</MudPaper>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3 ep-no-print" Wrap="Wrap.Wrap">
+    <MudToggleGroup T="string" @bind-Value="_filter" Size="Size.Small" Color="Color.Primary" Outlined="true">
+        <MudToggleItem Value="@("all")" Text="@T("Tümü", "All")" />
+        <MudToggleItem Value="@("found")" Text="@T("Bulunanlar", "Found")" />
+        <MudToggleItem Value="@("missing")" Text="@T("Bulunamayanlar", "Missing")" />
+        <MudToggleItem Value="@("unexpected")" Text="@T("Beklenmeyenler", "Unexpected")" />
+    </MudToggleGroup>
+    @if (Editable)
+    {
+        <div class="ep-scan">
+            <MudTextField @ref="_scanField" T="string" @bind-Value="_code" Placeholder="@T("QR, demirbaş no veya seri no okutun", "Scan a QR, asset tag or serial number")"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.QrCodeScanner" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Immediate="true" OnKeyDown="ScanKey" AutoFocus="true" Disabled="_scanning" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Scan" Disabled="_scanning || string.IsNullOrWhiteSpace(_code)">@T("Okut", "Scan")</MudButton>
+        </div>
+    }
+</MudStack>
+
+<MudTable Items="Lines" Dense="true" Elevation="1" RowClassFunc="@((JsonObject l, int _) => l["id"]?.ToString() == _lastScanned ? "ep-row-scanned" : "")">
+    <HeaderContent>
+        <MudTh>@T("Demirbaş no", "Asset tag")</MudTh>
+        <MudTh>@T("Demirbaş", "Asset")</MudTh>
+        <MudTh>@T("Seri no", "Serial no")</MudTh>
+        <MudTh>@T("Beklenen yer / sorumlu", "Expected holder")</MudTh>
+        <MudTh>@T("Sonuç", "Result")</MudTh>
+        <MudTh>@T("Gözlenen durum", "Observed condition")</MudTh>
+        <MudTh>@T("Okutan", "Scanned by")</MudTh>
+        @if (Editable)
+        {
+            <MudTh Class="ep-no-print" />
+        }
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>
+            @if (Session.Has("assets:read"))
+            {
+                <MudLink Href="@($"/r/assets/{context["assetId"]}")" Class="ep-mono">@context["assetTag"]</MudLink>
+            }
+            else
+            {
+                <span class="ep-mono">@context["assetTag"]</span>
+            }
+        </MudTd>
+        <MudTd>@context["assetName"]<div class="ep-muted ep-small">@context["categoryName"]</div></MudTd>
+        <MudTd><span class="ep-mono">@AssetUi.Text(context["serialNumber"])</span></MudTd>
+        <MudTd>@AssetUi.Text(context["expectedHolder"])</MudTd>
+        <MudTd>
+            @{ var (label, color) = Result(context); }
+            <MudChip T="string" Size="Size.Small" Color="color">@label</MudChip>
+        </MudTd>
+        <MudTd>
+            @if (Editable && HrUi.Bool(context["found"]))
+            {
+                <select class="ep-select" style="max-width:160px" value="@(context["condition"]?.ToString() ?? "")" @onchange="e => SetCondition(context, e.Value?.ToString())">
+                    <option value="">@T("Değişiklik yok", "No change")</option>
+                    @foreach (var c in new[] { "NEW", "GOOD", "FAIR", "DAMAGED" })
+                    {
+                        <option value="@c">@Meta.EnumLabel("AssetCondition", c, Locale)</option>
+                    }
+                </select>
+            }
+            else if (context["condition"] != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color='AssetUi.ConditionColor(context["condition"]?.ToString())'>@Meta.EnumLabel("AssetCondition", context["condition"]?.ToString(), Locale)</MudChip>
+            }
+            else
+            {
+                <span class="ep-muted">—</span>
+            }
+        </MudTd>
+        <MudTd>
+            @AssetUi.Text(context["foundByName"])
+            @if (context["foundAt"] != null)
+            {
+                <div class="ep-muted ep-small">@AssetUi.Stamp(context["foundAt"])</div>
+            }
+            @if (context["note"] != null)
+            {
+                <div class="ep-small">@context["note"]</div>
+            }
+        </MudTd>
+        @if (Editable)
+        {
+            <MudTd Style="text-align:right;white-space:nowrap" Class="ep-no-print">
+                @if (!HrUi.Bool(context["expected"]))
+                {
+                    <MudTooltip Text="@T("Sayımdan çıkar", "Remove from count")">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => Remove(context)" />
+                    </MudTooltip>
+                }
+                else if (HrUi.Bool(context["found"]))
+                {
+                    <MudTooltip Text="@T("Bulunamadı olarak işaretle", "Mark as missing")">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Cancel" Size="Size.Small" OnClick="() => Patch(context, new { found = false })" />
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudTooltip Text="@T("Bulundu olarak işaretle", "Mark as found")">
+                        <MudIconButton Icon="@Icons.Material.Outlined.CheckCircle" Size="Size.Small" Color="Color.Success" OnClick="() => Patch(context, new { found = true })" />
+                    </MudTooltip>
+                }
+                <MudTooltip Text="@T("Not", "Note")">
+                    <MudIconButton Icon="@Icons.Material.Outlined.StickyNote2" Size="Size.Small" OnClick="() => Note(context)" />
+                </MudTooltip>
+            </MudTd>
+        }
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@L("noRecords")</MudText></NoRecordsContent>
+</MudTable>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [Inject] private IJSRuntime Js { get; set; } = null!;
+
+    private JsonObject? _count;
+    private bool _missing;
+    private bool _busy;
+    private bool _scanning;
+    private string _filter = "all";
+    private string? _code;
+    private string? _lastScanned;
+    private MudTextField<string>? _scanField;
+
+    private string? Status => _count?["status"]?.ToString();
+    private bool Editable => Status == "DRAFT" && Session.Has("assets:count");
+    private int Expected => HrUi.Int(_count!["expectedCount"]);
+    private int Found => HrUi.Int(_count!["foundCount"]);
+    private int Missing => HrUi.Int(_count!["missingCount"]);
+    private int Unexpected => HrUi.Int(_count!["unexpectedCount"]);
+
+    private string Scope
+    {
+        get
+        {
+            var parts = new[] { _count!["locationName"]?.ToString(), _count["categoryName"]?.ToString() }.Where(s => !string.IsNullOrEmpty(s)).ToList();
+            return parts.Count > 0 ? string.Join(" · ", parts) : T("Tüm demirbaşlar", "All assets");
+        }
+    }
+
+    private IEnumerable<JsonObject> Lines => _count!["lines"]!.AsArray().Select(n => n!.AsObject()).Where(l =>
+    {
+        bool expected = HrUi.Bool(l["expected"]), found = HrUi.Bool(l["found"]);
+        return _filter switch
+        {
+            "found" => expected && found,
+            "missing" => expected && !found,
+            "unexpected" => !expected,
+            _ => true,
+        };
+    });
+
+    private (string, Color) Result(JsonObject line) =>
+        !HrUi.Bool(line["expected"]) ? (T("Beklenmeyen", "Unexpected"), Color.Warning)
+        : HrUi.Bool(line["found"]) ? (T("Bulundu", "Found"), Color.Success)
+        : (T("Bulunamadı", "Missing"), Color.Error);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _count = null;
+        _missing = !await Load();
+    }
+
+    private Task<bool> Load() => Run(async () => _count = await Api.GetJsonAsync($"/api/assets/counts/{Id}"));
+
+    private async Task ScanKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Scan();
+    }
+
+    private async Task Scan()
+    {
+        var code = _code?.Trim();
+        if (string.IsNullOrEmpty(code) || _scanning) return;
+        _scanning = true;
+        try
+        {
+            var res = await Api.PostAsync<JsonObject>($"/api/assets/counts/{Id}/scan", new { code });
+            var tag = res["line"]?["assetTag"];
+            switch (res["result"]?.ToString())
+            {
+                case "FOUND": Snackbar.Add(T($"{tag} bulundu", $"{tag} found"), Severity.Success); break;
+                case "ALREADY_FOUND": Snackbar.Add(T($"{tag} zaten sayıldı", $"{tag} was already counted"), Severity.Info); break;
+                default: Snackbar.Add(T($"{tag} bu sayımın kapsamında değil; beklenmeyen olarak eklendi", $"{tag} is outside this count's scope; added as unexpected"), Severity.Warning); break;
+            }
+            _lastScanned = res["line"]?["id"]?.ToString();
+            _code = null;
+            await Load();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Status == 404 ? T($"\"{code}\" ile eşleşen demirbaş yok", $"No asset matches \"{code}\"") : ex.Message, Severity.Error);
+        }
+        _scanning = false;
+        StateHasChanged();
+        if (_scanField != null) await _scanField.FocusAsync();
+    }
+
+    private async Task Patch(JsonObject line, object body)
+    {
+        if (await Run(() => Api.PatchAsync<JsonObject>($"/api/assets/counts/{Id}/lines/{line["id"]}", body))) await Load();
+    }
+
+    private Task SetCondition(JsonObject line, string? value) =>
+        Patch(line, string.IsNullOrEmpty(value) ? new { clearCondition = true } : new { condition = value });
+
+    private async Task Note(JsonObject line)
+    {
+        var note = await PromptDialog.AskAsync(Dialogs, $"{line["assetTag"]} · {T("Not", "Note")}", T("Not", "Note"));
+        if (note != null) await Patch(line, new { note });
+    }
+
+    private async Task Remove(JsonObject line)
+    {
+        if (await Run(() => Api.DeleteAsync($"/api/assets/counts/{Id}/lines/{line["id"]}"))) await Load();
+    }
+
+    private async Task Complete()
+    {
+        var message = T($"Bulunamayan {Missing} demirbaş fark raporunda kalacak. Gözlenen fiziksel durumlar demirbaş kartlarına işlenecek.",
+            $"{Missing} missing asset(s) stay on the variance report. Observed conditions are written to the asset cards.");
+        if (!await Confirm(message, T("Sayımı tamamla", "Complete count"))) return;
+        _busy = true;
+        await Run(async () => _count = await Api.PostAsync<JsonObject>($"/api/assets/counts/{Id}/complete", new { applyConditions = true }), T("Sayım tamamlandı", "Count completed"));
+        _busy = false;
+    }
+
+    private async Task Cancel()
+    {
+        if (!await Confirm(T("Okutulan kayıtlar saklanır, sayım kapatılır ve demirbaşlar değişmez.", "Scanned lines are kept, the count is closed and assets stay unchanged."), T("Sayımı iptal et", "Cancel count"))) return;
+        await Run(async () => _count = await Api.PostAsync<JsonObject>($"/api/assets/counts/{Id}/cancel"), L("saved"));
+    }
+
+    private async Task Print() => await Js.InvokeVoidAsync("print");
+}

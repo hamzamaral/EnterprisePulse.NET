@@ -1,0 +1,95 @@
+@page "/assets/my"
+@inherits AppPage
+
+<PageTitle>@T("Zimmetlerim", "My assets") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("Zimmetlerim", "My assets")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Üzerinize zimmetli demirbaşlar ve teslim tutanakları", "Assets assigned to you and their hand-over forms")</MudText>
+    </div>
+</div>
+
+@if (Session.Me?.User.EmployeeId == null)
+{
+    <MudAlert Severity="Severity.Info">@T("Hesabınıza bağlı bir personel kaydı yok. İK ile iletişime geçin.", "No employee record is linked to your account. Please contact HR.")</MudAlert>
+    return;
+}
+@if (_rows == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    return;
+}
+
+@if (Active.Count == 0)
+{
+    <MudPaper Outlined="true" Class="pa-8 ep-empty">
+        <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Color="Color.Secondary">@T("Üzerinize zimmetli demirbaş yok", "You have no assets assigned")</MudText>
+    </MudPaper>
+}
+else
+{
+    <MudGrid Spacing="3">
+        @foreach (var a in Active)
+        {
+            var acknowledged = a["acknowledgedAt"] != null;
+            <MudItem xs="12" md="6" lg="4">
+                <MudPaper Outlined="true" Class="pa-4 ep-asset-card">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                        <div>
+                            <MudText Typo="Typo.subtitle1">@a["assetName"]</MudText>
+                            <span class="ep-mono ep-muted ep-small">@a["assetTag"]</span>
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Color="@(acknowledged ? Color.Success : Color.Warning)">
+                            @(acknowledged ? T("Onaylandı", "Acknowledged") : T("Onay bekliyor", "Awaiting acknowledgement"))
+                        </MudChip>
+                    </MudStack>
+                    <div class="ep-facts mt-2">
+                        <div class="ep-fact"><span class="ep-muted">@T("Zimmet tarihi", "Assigned on")</span><span>@AssetUi.Day(a["assignedAt"])</span></div>
+                        <div class="ep-fact"><span class="ep-muted">@T("Beklenen iade", "Expected return")</span><span>@AssetUi.Day(a["expectedReturnDate"])</span></div>
+                    </div>
+                    <MudButton Variant="@(acknowledged ? Variant.Outlined : Variant.Filled)" Color="Color.Primary" Size="Size.Small" FullWidth="true" Class="mt-3"
+                               StartIcon="@Icons.Material.Filled.Description" Href="@($"/assets/assignments/{a["id"]}")">
+                        @(acknowledged ? T("Tutanağı görüntüle", "View form") : T("İncele ve onayla", "Review and sign"))
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@if (Past.Count > 0)
+{
+    <MudText Typo="Typo.h6" Class="mt-6 mb-2">@T("Geçmiş zimmetler", "Past assignments")</MudText>
+    <MudTable Items="Past" Dense="true" Hover="true" Elevation="1" Class="ep-clickable" OnRowClick="(TableRowClickEventArgs<JsonObject> e) => Open(e.Item!)">
+        <HeaderContent>
+            <MudTh>@T("Tutanak", "Form")</MudTh>
+            <MudTh>@T("Demirbaş", "Asset")</MudTh>
+            <MudTh>@T("Zimmet", "Assigned")</MudTh>
+            <MudTh>@T("İade", "Returned")</MudTh>
+            <MudTh>@T("İade durumu", "Returned condition")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="ep-mono">@context["number"]</span></MudTd>
+            <MudTd>@context["assetName"] <small class="ep-muted ep-mono">@context["assetTag"]</small></MudTd>
+            <MudTd>@AssetUi.Day(context["assignedAt"])</MudTd>
+            <MudTd>@AssetUi.Day(context["returnedAt"])</MudTd>
+            <MudTd>@Meta.EnumLabel("AssetCondition", context["conditionIn"]?.ToString(), Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+
+    private void Open(JsonObject row) => Nav.NavigateTo($"/assets/assignments/{row["id"]}");
+    private List<JsonObject> Active => _rows!.Where(a => a["status"]?.ToString() == "ACTIVE").ToList();
+    private List<JsonObject> Past => _rows!.Where(a => a["status"]?.ToString() == "RETURNED").ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.Me?.User.EmployeeId == null) return;
+        await Run(async () => _rows = (await Api.GetAsync<JsonArray>("/api/assets/assignments/mine")).Select(n => n!.AsObject()).ToList());
+        _rows ??= [];
+    }
+}

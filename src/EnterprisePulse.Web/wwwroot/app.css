@@ -234,9 +234,228 @@ td.ep-day {
     font-weight: 600;
 }
 
+/* Assets: card facts, depreciation, QR label */
+.ep-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px 24px;
+}
+
+.ep-fact {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ep-fact > .ep-muted {
+    font-size: 0.75rem;
+}
+
+.ep-stat-value {
+    font-size: 1.6rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.ep-dep-head .ep-grow {
+    flex: 1;
+}
+
+.ep-dep-head {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.ep-row-current td {
+    background: var(--mud-palette-action-default-hover);
+    font-weight: 600;
+}
+
+.ep-qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.ep-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.ep-asset-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.ep-asset-card .mud-button-root {
+    margin-top: auto;
+}
+
+/* Hand-over form (zimmet tutanağı), printable */
+.ep-doc-toolbar {
+    max-width: 820px;
+    margin: 0 auto 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.ep-doc {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 8px;
+    background: var(--mud-palette-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.ep-doc-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.ep-doc-company {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.ep-doc-title {
+    text-align: center;
+    font-size: 1.25rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+.ep-doc h2 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    padding-bottom: 4px;
+    margin: 0 0 8px;
+}
+
+.ep-doc-row {
+    display: grid;
+    grid-template-columns: 11rem 1fr;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 0.875rem;
+}
+
+.ep-doc-row > span:first-child {
+    color: var(--mud-palette-text-secondary);
+}
+
+.ep-doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    margin-bottom: 8px;
+}
+
+.ep-doc-table th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: var(--mud-palette-text-secondary);
+    padding: 4px 6px 4px 0;
+}
+
+.ep-doc-table td {
+    border-top: 1px solid var(--mud-palette-lines-default);
+    padding: 8px 6px 8px 0;
+    vertical-align: top;
+}
+
+.ep-doc-statement {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+.ep-doc-signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.ep-doc-sign {
+    display: flex;
+    flex-direction: column;
+    min-height: 150px;
+    padding: 14px;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 6px;
+    font-size: 0.875rem;
+}
+
+.ep-doc-toolbar .ep-grow,
+.ep-doc-sign > .ep-grow {
+    flex: 1;
+}
+
+.ep-doc-sign > .ep-grow {
+    padding-top: 12px;
+}
+
+.ep-doc-sign > small {
+    border-top: 1px solid var(--mud-palette-lines-default);
+    padding-top: 4px;
+}
+
+.ep-doc-stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid #059669;
+    border-radius: 4px;
+    color: #047857;
+    font-size: 0.75rem;
+}
+
+/* Asset count sheet */
+.ep-count-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+}
+
+.ep-scan {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 320px;
+}
+
+.ep-row-scanned td {
+    background: rgba(37, 99, 235, 0.07);
+}
+
 @media print {
     .mud-appbar, .mud-drawer, .ep-no-print {
         display: none !important;
+    }
+
+    .ep-doc {
+        max-width: none;
+        border: 0;
+        padding: 0;
+        background: #fff;
+        color: #000;
     }
 
     .mud-main-content {

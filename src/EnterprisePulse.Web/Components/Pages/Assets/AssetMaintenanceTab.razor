@@ -1,0 +1,65 @@
+@inherits AppPage
+
+@if (CanEdit)
+{
+    <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Build" OnClick="Create">@T("Bakım kaydı ekle", "Add maintenance")</MudButton>
+    </MudStack>
+}
+<MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true" Loading="_loading">
+    <HeaderContent>
+        <MudTh>@T("Tür", "Type")</MudTh>
+        <MudTh>@T("Başlık", "Title")</MudTh>
+        <MudTh>@T("Servis", "Vendor")</MudTh>
+        <MudTh>@T("Tarih", "Dates")</MudTh>
+        <MudTh Style="text-align:right">@T("Maliyet", "Cost")</MudTh>
+        <MudTh>@L("status")</MudTh>
+        <MudTh />
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@Meta.EnumLabel("MaintenanceType", context["type"]?.ToString(), Locale)</MudTd>
+        <MudTd>@context["title"]<div class="ep-muted ep-small">@context["description"]</div></MudTd>
+        <MudTd>@AssetUi.Text(context["vendor"])</MudTd>
+        <MudTd>@AssetUi.Day(context["startedAt"]) @(context["completedAt"] != null ? $"– {AssetUi.Day(context["completedAt"])}" : "")</MudTd>
+        <MudTd Style="text-align:right">@AssetUi.Money(context["cost"], null, Locale)</MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small" Color='Fmt.StatusColor(context["status"]?.ToString())'>@Meta.EnumLabel("MaintenanceStatus", context["status"]?.ToString(), Locale)</MudChip></MudTd>
+        <MudTd Style="text-align:right">
+            @if (CanEdit && context["status"]?.ToString() == "OPEN")
+            {
+                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.TaskAlt" OnClick="() => Complete(context)">@T("Tamamla", "Complete")</MudButton>
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@T("Bakım kaydı yok", "No maintenance records")</MudText></NoRecordsContent>
+</MudTable>
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<JsonObject> _rows = [];
+    private bool _loading = true;
+    private string Id => Record["id"]!.ToString();
+    private string? Status => Record["status"]?.ToString();
+    private bool CanEdit => Session.Has("assets:update") && Status is not ("RETIRED" or "LOST");
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true;
+        await Run(async () => _rows = (await Api.GetAsync<JsonArray>($"/api/assets/{Id}/maintenances")).Select(n => n!.AsObject()).ToList());
+        _loading = false;
+    }
+
+    private async Task Create()
+    {
+        if (await MaintenanceDialog.OpenAsync(Dialogs, Id, null, Status == "IN_STOCK")) await OnChanged.InvokeAsync();
+    }
+
+    private async Task Complete(JsonObject row)
+    {
+        if (await MaintenanceDialog.OpenAsync(Dialogs, Id, row)) await OnChanged.InvokeAsync();
+    }
+}

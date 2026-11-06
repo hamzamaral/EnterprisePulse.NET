@@ -60,6 +60,8 @@ public sealed class ResourceView
     public bool HideDelete { get; set; }
     public string? CreateHref { get; set; }
     public Type? CreateDialog { get; set; }
+    /// <summary>Custom record page, e.g. "/assets/counts/{id}", instead of the generic detail.</summary>
+    public string? DetailHref { get; set; }
     public List<ResourceAction> Actions { get; } = [];
     public List<ResourceTab> Tabs { get; } = [];
     public List<HeaderLink> Links { get; } = [];
@@ -84,6 +86,71 @@ public static partial class ResourceViews
     {
         Platform();
         Hr();
+        Assets();
+    }
+
+    static void Assets()
+    {
+        Configure("assets", v =>
+        {
+            v.Columns = ["assetTag", "name", "categoryId", "brand", "model", "status", "condition", "locationId"];
+            v.FilterFields = ["status", "condition", "categoryId", "locationId", "purchaseDate", "warrantyEndDate"];
+            v.ReadOnlyFields = ["status", "retiredAt", "retireReason"];
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "Zimmetle", LabelEn = "Assign", Icon = Icons.Material.Filled.AssignmentInd, Permission = "assets:assign",
+                Visible = ResourceAction.StatusIn("IN_STOCK"), Run = Components.Pages.Assets.AssignDialog.Action(transfer: false),
+            });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "Devret", LabelEn = "Transfer", Icon = Icons.Material.Filled.SwapHoriz, Permission = "assets:assign",
+                Visible = ResourceAction.StatusIn("ASSIGNED"), Run = Components.Pages.Assets.AssignDialog.Action(transfer: true),
+            });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "İade al", LabelEn = "Take back", Icon = Icons.Material.Filled.AssignmentReturn, Permission = "assets:assign",
+                Visible = ResourceAction.StatusIn("ASSIGNED"), Run = Components.Pages.Assets.ReturnDialog.RunAsync,
+            });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "Hizmet dışı bırak", LabelEn = "Retire", Icon = Icons.Material.Filled.Block, Color = Color.Error, Permission = "assets:update",
+                Visible = ResourceAction.StatusIn("IN_STOCK"), Run = Components.Pages.Assets.RetireDialog.RunAsync,
+            });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "QR etiketi", LabelEn = "QR label", Icon = Icons.Material.Filled.QrCode2, Color = Color.Default,
+                Endpoint = "/api/assets/{id}/label", Download = true,
+            });
+            v.Tabs.Add(new ResourceTab { Title = "Amortisman ve etiket", Component = typeof(Components.Pages.Assets.AssetOverviewTab) });
+            v.Tabs.Add(new ResourceTab { Title = "Zimmet geçmişi", Component = typeof(Components.Pages.Assets.AssetAssignmentsTab) });
+            v.Tabs.Add(new ResourceTab { Title = "Bakım", Component = typeof(Components.Pages.Assets.AssetMaintenanceTab) });
+        });
+        Configure("asset-assignments", v =>
+        {
+            v.Columns = ["number", "assetId", "assigneeType", "employeeId", "departmentId", "locationId", "assignedAt", "returnedAt", "acknowledgedAt", "status"];
+            v.FilterFields = ["status", "assigneeType", "assetId", "employeeId", "departmentId", "assignedAt"];
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+            v.DetailHref = "/assets/assignments/{id}";
+        });
+        Configure("asset-counts", v =>
+        {
+            v.Columns = ["number", "countDate", "locationId", "categoryId", "status", "createdById", "completedAt"];
+            v.FilterFields = ["status", "locationId", "categoryId", "countDate"];
+            v.CreateDialog = typeof(Components.Pages.Assets.AssetCountDialog);
+            v.HideEdit = v.HideDelete = true;
+            v.DetailHref = "/assets/counts/{id}";
+        });
+        Configure("asset-categories", v =>
+        {
+            v.Columns = ["code", "name", "usefulLifeMonths", "isActive"];
+            v.Links.Add(new HeaderLink("Konumlar", "Locations", "/r/asset-locations", Icons.Material.Filled.Place));
+        });
+        Configure("asset-locations", v =>
+        {
+            v.Columns = ["code", "name", "branchId", "description", "isActive"];
+            v.Links.Add(new HeaderLink("Kategoriler", "Categories", "/r/asset-categories", Icons.Material.Filled.Category));
+        });
+        Configure("asset-maintenances", v => v.HideCreate = v.HideEdit = v.HideDelete = true);
     }
 
     static void Hr()

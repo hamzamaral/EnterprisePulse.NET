@@ -1,0 +1,70 @@
+@inherits AppPage
+
+<MudTable Items="_rows" Dense="true" Hover="true" Elevation="0" Outlined="true" Loading="_loading" Class="ep-clickable"
+          OnRowClick="(TableRowClickEventArgs<JsonObject> e) => Open(e.Item!)">
+    <HeaderContent>
+        <MudTh>@T("Tutanak", "Form")</MudTh>
+        <MudTh>@T("Sorumlu", "Holder")</MudTh>
+        <MudTh>@T("Zimmet", "Assigned")</MudTh>
+        <MudTh>@T("İade", "Returned")</MudTh>
+        <MudTh>@T("Fiziksel durum", "Condition")</MudTh>
+        <MudTh>@T("Onay", "Acknowledged")</MudTh>
+        <MudTh>@L("status")</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><span class="ep-mono">@context["number"]</span></MudTd>
+        <MudTd>@context["assigneeName"] <small class="ep-muted">· @Meta.EnumLabel("AssigneeType", context["assigneeType"]?.ToString(), Locale)</small></MudTd>
+        <MudTd>@AssetUi.Day(context["assignedAt"])<div class="ep-muted ep-small">@context["assignedByName"]</div></MudTd>
+        <MudTd>
+            @if (context["returnedAt"] != null)
+            {
+                @AssetUi.Day(context["returnedAt"])<div class="ep-muted ep-small">@context["returnedByName"]</div>
+            }
+            else
+            {
+                <span class="ep-muted">—</span>
+            }
+        </MudTd>
+        <MudTd>
+            @Meta.EnumLabel("AssetCondition", context["conditionOut"]?.ToString(), Locale)
+            @if (context["conditionIn"] != null)
+            {
+                <span> / @Meta.EnumLabel("AssetCondition", context["conditionIn"]?.ToString(), Locale)</span>
+            }
+        </MudTd>
+        <MudTd>
+            @if (context["acknowledgedAt"] != null)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Verified" Color="Color.Success" Size="Size.Small" Title="@AssetUi.Stamp(context["acknowledgedAt"])" />
+            }
+            else if (context["status"]?.ToString() == "ACTIVE")
+            {
+                <MudText Typo="Typo.caption" Color="Color.Warning">@T("Bekliyor", "Pending")</MudText>
+            }
+            else
+            {
+                <span class="ep-muted">—</span>
+            }
+        </MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small" Color='Fmt.StatusColor(context["status"]?.ToString())'>@Meta.EnumLabel("AssignmentStatus", context["status"]?.ToString(), Locale)</MudChip></MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@T("Bu demirbaş henüz zimmetlenmedi", "This asset has never been assigned")</MudText></NoRecordsContent>
+</MudTable>
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<JsonObject> _rows = [];
+    private bool _loading = true;
+
+    private void Open(JsonObject row) => Nav.NavigateTo($"/assets/assignments/{row["id"]}");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await Run(async () => _rows = (await Api.GetAsync<JsonArray>($"/api/assets/{Record["id"]}/assignments")).Select(n => n!.AsObject()).ToList());
+        _loading = false;
+    }
+}

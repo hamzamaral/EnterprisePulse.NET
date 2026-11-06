@@ -1,0 +1,166 @@
+@page "/assets/assignments/{Id:guid}"
+@inherits AppPage
+
+@if (_doc == null)
+{
+    @if (_missing)
+    {
+        <MudAlert Severity="Severity.Warning">@L("notFound")</MudAlert>
+    }
+    else
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    return;
+}
+
+<PageTitle>@A["number"] · EnterprisePulse</PageTitle>
+<div class="ep-doc-toolbar ep-no-print">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="Back">@L("back")</MudButton>
+    <MudChip T="string" Size="Size.Small" Color='Fmt.StatusColor(A["status"]?.ToString())'>@Meta.EnumLabel("AssignmentStatus", A["status"]?.ToString(), Locale)</MudChip>
+    @if (Session.Has("assets:read"))
+    {
+        <MudLink Href="@($"/r/assets/{A["assetId"]}")" Typo="Typo.body2">@A["assetTag"]</MudLink>
+    }
+    <div class="ep-grow"></div>
+    @if (HrUi.Bool(_doc["canAcknowledge"]))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Verified" OnClick="Acknowledge" Disabled="_busy">@T("Teslim aldım, onaylıyorum", "I acknowledge receipt")</MudButton>
+    }
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print" OnClick="Print">@T("Yazdır / PDF", "Print / PDF")</MudButton>
+</div>
+
+<article class="ep-doc">
+    <header class="ep-doc-head">
+        <div>
+            <div class="ep-doc-company">@_doc["companyName"]</div>
+            @if (_doc["companyAddress"] != null)
+            {
+                <div class="ep-muted ep-small">@_doc["companyAddress"]</div>
+            }
+        </div>
+        <div style="text-align:right">
+            <div class="ep-mono"><b>@A["number"]</b></div>
+            <div>@AssetUi.Day(A["assignedAt"])</div>
+        </div>
+    </header>
+
+    <h1 class="ep-doc-title">@T("Demirbaş Zimmet Teslim Tutanağı", "Asset Hand-over Form")</h1>
+
+    <section>
+        <h2>@T("Teslim alan", "Recipient")</h2>
+        <div class="ep-doc-row"><span>@T("Zimmet türü", "Assignee type")</span><span>@Meta.EnumLabel("AssigneeType", A["assigneeType"]?.ToString(), Locale)</span></div>
+        <div class="ep-doc-row"><span>@T("Adı / Unvanı", "Name")</span><span>@P["name"]</span></div>
+        @if (IsEmployee)
+        {
+            <div class="ep-doc-row"><span>@T("Sicil no", "Employee no")</span><span>@AssetUi.Text(P["employeeNo"])</span></div>
+            <div class="ep-doc-row"><span>@T("Departman", "Department")</span><span>@AssetUi.Text(P["departmentName"])</span></div>
+            <div class="ep-doc-row"><span>@T("Pozisyon", "Position")</span><span>@AssetUi.Text(P["positionName"])</span></div>
+        }
+    </section>
+
+    <section>
+        <h2>@T("Demirbaş bilgileri", "Asset")</h2>
+        <table class="ep-doc-table">
+            <thead>
+                <tr>
+                    <th>@T("Demirbaş no", "Asset tag")</th>
+                    <th>@T("Demirbaş", "Asset")</th>
+                    <th>@T("Marka / model", "Brand / model")</th>
+                    <th>@T("Seri no", "Serial no")</th>
+                    <th>@T("Durum", "Condition")</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="ep-mono">@S["assetTag"]</td>
+                    <td>@S["name"]<div class="ep-muted ep-small">@S["categoryName"]</div></td>
+                    <td>@(string.Join(" ", new[] { S["brand"]?.ToString(), S["model"]?.ToString() }.Where(x => !string.IsNullOrEmpty(x))) is { Length: > 0 } bm ? bm : "—")</td>
+                    <td>@AssetUi.Text(S["serialNumber"])</td>
+                    <td>@Meta.EnumLabel("AssetCondition", A["conditionOut"]?.ToString(), Locale)</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="ep-doc-row"><span>@T("Beklenen iade", "Expected return")</span><span>@AssetUi.Day(A["expectedReturnDate"])</span></div>
+        @if (A["notes"] != null)
+        {
+            <div class="ep-doc-row"><span>@T("Notlar", "Notes")</span><span>@A["notes"]</span></div>
+        }
+    </section>
+
+    <p class="ep-doc-statement">
+        @T("Yukarıda bilgileri yazılı demirbaşı eksiksiz ve çalışır durumda teslim aldım. Demirbaşı özenle ve yalnızca iş amaçlı kullanacağımı, kayıp veya hasar durumunu derhal bildireceğimi, iş ilişkimin sona ermesi ya da talep edilmesi halinde aynı durumda iade edeceğimi kabul ederim.",
+           "I have received the asset described above complete and in working order. I agree to use it with care and for business purposes only, to report any loss or damage immediately, and to return it in the same condition when my employment ends or when requested.")
+    </p>
+
+    @if (A["status"]?.ToString() == "RETURNED")
+    {
+        <section>
+            <h2>@T("İade bilgileri", "Return")</h2>
+            <div class="ep-doc-row"><span>@T("İade tarihi", "Returned on")</span><span>@AssetUi.Day(A["returnedAt"])</span></div>
+            <div class="ep-doc-row"><span>@T("Teslim alınan durum", "Condition on return")</span><span>@Meta.EnumLabel("AssetCondition", A["conditionIn"]?.ToString(), Locale)</span></div>
+            <div class="ep-doc-row"><span>@T("İadeyi teslim alan", "Received by")</span><span>@AssetUi.Text(A["returnedByName"])</span></div>
+            @if (A["returnNotes"] != null)
+            {
+                <div class="ep-doc-row"><span>@T("Notlar", "Notes")</span><span>@A["returnNotes"]</span></div>
+            }
+        </section>
+    }
+
+    <div class="ep-doc-signatures">
+        <div class="ep-doc-sign">
+            <b>@T("Teslim eden", "Delivered by")</b>
+            <span>@A["assignedByName"]</span>
+            <div class="ep-grow"></div>
+            <small class="ep-muted">@T("İmza", "Signature")</small>
+        </div>
+        <div class="ep-doc-sign">
+            <b>@T("Teslim alan", "Received by")</b>
+            <span>@(IsEmployee ? P["name"]?.ToString() : "—")</span>
+            <div class="ep-grow">
+                @if (A["acknowledgedAt"] != null)
+                {
+                    <span class="ep-doc-stamp"><MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Small" /> @T($"Elektronik olarak onaylandı · {AssetUi.Stamp(A["acknowledgedAt"])}", $"Acknowledged electronically · {AssetUi.Stamp(A["acknowledgedAt"])}")</span>
+                }
+            </div>
+            <small class="ep-muted">@T("İmza", "Signature")</small>
+        </div>
+    </div>
+</article>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [Inject] private IJSRuntime Js { get; set; } = null!;
+
+    private JsonObject? _doc;
+    private bool _missing;
+    private bool _busy;
+
+    private JsonObject A => _doc!["assignment"]!.AsObject();
+    private JsonObject S => _doc!["asset"]!.AsObject();
+    private JsonObject P => _doc!["assignee"]!.AsObject();
+    private bool IsEmployee => A["assigneeType"]?.ToString() == "EMPLOYEE";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _doc = null;
+        _missing = !await Run(async () => _doc = await Api.GetJsonAsync($"/api/assets/assignments/{Id}"));
+    }
+
+    private async Task Acknowledge()
+    {
+        _busy = true;
+        await Run(async () => _doc = await Api.PostAsync<JsonObject>($"/api/assets/assignments/{Id}/acknowledge"), T("Tutanak onaylandı", "Form acknowledged"));
+        _busy = false;
+    }
+
+    private async Task Print() => await Js.InvokeVoidAsync("print");
+
+    private void Back()
+    {
+        if (Session.Has("assets:read") && !IsMine) Nav.NavigateTo($"/r/assets/{A["assetId"]}");
+        else Nav.NavigateTo("/assets/my");
+    }
+
+    private bool IsMine => IsEmployee && A["assigneeId"]?.ToString() == Session.Me?.User.EmployeeId?.ToString();
+}

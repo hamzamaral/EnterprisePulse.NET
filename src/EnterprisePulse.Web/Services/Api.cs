@@ -264,6 +264,12 @@ public sealed class ApiClient(IHttpClientFactory http, Session session, Navigati
         using var _ = await SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, url));
     }
 
+    public async Task<byte[]> GetBytesAsync(string url)
+    {
+        using var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, url));
+        return await res.Content.ReadAsByteArrayAsync();
+    }
+
     /// <summary>Downloads a file (export, PDF document) and hands it to the browser.</summary>
     public async Task DownloadAsync(string url, string fallbackName = "download")
     {

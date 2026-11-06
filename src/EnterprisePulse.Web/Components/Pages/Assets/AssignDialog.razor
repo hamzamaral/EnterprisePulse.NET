@@ -1,0 +1,110 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Transfer ? T("Demirbaşı devret", "Transfer asset") : T("Zimmetle", "Assign asset"))</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Caption</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (Transfer)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">@T("Mevcut zimmet iade edilip yeni sorumluya aynı gün yeni bir zimmet açılır.", "The current assignment is closed and a new one is opened for the new holder.")</MudAlert>
+        }
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" Value="_type" ValueChanged="TypeChanged" Label="@T("Zimmet türü", "Assignee type")" ToStringFunc="@(v => Meta.EnumLabel("AssigneeType", v, Locale))" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var t in new[] { "EMPLOYEE", "DEPARTMENT", "LOCATION" })
+                    {
+                        <MudSelectItem T="string" Value="t">@Meta.EnumLabel("AssigneeType", t, Locale)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                @switch (_type)
+                {
+                    case "EMPLOYEE":
+                        <RefPicker Resource="employees" @bind-Value="_assigneeId" Label="@T("Personel", "Employee")" Required="true" Filters="_activeOnly" />
+                        break;
+                    case "DEPARTMENT":
+                        <RefPicker Resource="departments" @bind-Value="_assigneeId" Label="@T("Departman", "Department")" Required="true" />
+                        break;
+                    default:
+                        <RefPicker Resource="asset-locations" @bind-Value="_assigneeId" Label="@T("Konum", "Location")" Required="true" />
+                        break;
+                }
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_assignedAt" Label="@T("Zimmet tarihi", "Assigned on")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_expectedReturn" Label="@T("Beklenen iade", "Expected return")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr"
+                               MinDate="_assignedAt" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Lines="3" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || string.IsNullOrEmpty(_assigneeId) || _assignedAt == null">
+            @(Transfer ? T("Devret", "Transfer") : T("Zimmetle", "Assign"))
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string AssetId { get; set; } = "";
+    [Parameter] public string Caption { get; set; } = "";
+    [Parameter] public bool Transfer { get; set; }
+
+    private static readonly Dictionary<string, string> _activeOnly = new() { ["status"] = "ACTIVE" };
+    private string _type = "EMPLOYEE";
+    private string? _assigneeId;
+    private DateTime? _assignedAt = DateTime.Today;
+    private DateTime? _expectedReturn;
+    private string? _notes;
+    private bool _busy;
+
+    private void TypeChanged(string type)
+    {
+        _type = type;
+        _assigneeId = null;
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        var body = new
+        {
+            assigneeType = _type,
+            employeeId = _type == "EMPLOYEE" ? _assigneeId : null,
+            departmentId = _type == "DEPARTMENT" ? _assigneeId : null,
+            locationId = _type == "LOCATION" ? _assigneeId : null,
+            assignedAt = AssetUi.Iso(_assignedAt),
+            expectedReturnDate = _expectedReturn == null ? null : AssetUi.Iso(_expectedReturn),
+            notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes,
+        };
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>($"/api/assets/{AssetId}/{(Transfer ? "transfer" : "assign")}", body),
+            Transfer ? T("Demirbaş devredildi", "Asset transferred") : T("Demirbaş zimmetlendi", "Asset assigned"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(created!));
+    }
+
+    public static async Task<JsonObject?> OpenAsync(IDialogService dialogs, string assetId, string caption, bool transfer)
+    {
+        var dialog = await dialogs.ShowAsync<AssignDialog>(null, new DialogParameters<AssignDialog>
+        {
+            { x => x.AssetId, assetId }, { x => x.Caption, caption }, { x => x.Transfer, transfer },
+        }, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        return await dialog.Result is { Canceled: false, Data: JsonObject a } ? a : null;
+    }
+
+    public static Func<ActionContext, Task> Action(bool transfer) => async ctx =>
+    {
+        var caption = $"{ctx.Record["assetTag"]} · {ctx.Record["name"]}";
+        if (await OpenAsync(ctx.Dialogs, ctx.Id, caption, transfer) is { } a) ctx.Nav.NavigateTo($"/assets/assignments/{a["id"]}");
+    };
+}
