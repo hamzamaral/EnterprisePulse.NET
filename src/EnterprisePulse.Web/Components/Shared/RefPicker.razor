@@ -1,0 +1,64 @@
+@inherits AppPage
+
+<MudAutocomplete T="LookupItem" Value="_selected" ValueChanged="OnSelected" SearchFunc="Search" ToStringFunc="@(i => i?.Label ?? "")"
+                 Label="@Label" Required="Required" Disabled="Disabled" Clearable="!Required" ResetValueOnEmptyText="true"
+                 Variant="Variant.Outlined" Margin="Margin.Dense" DebounceInterval="250" MaxItems="50" CoerceText="false"
+                 Strict="false" ShowProgressIndicator="true" Dense="true" HelperText="@HelperText" />
+
+@code {
+    [Parameter, EditorRequired] public string Resource { get; set; } = "";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? InitialLabel { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Dictionary<string, string>? Filters { get; set; }
+
+    private LookupItem? _selected;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Value == _selected?.Id) return;
+        if (string.IsNullOrEmpty(Value))
+        {
+            _selected = null;
+            return;
+        }
+        if (InitialLabel != null)
+        {
+            _selected = new LookupItem(Value, InitialLabel);
+            return;
+        }
+        try
+        {
+            var items = await Api.GetAsync<List<LookupItem>>($"/api/r/{Resource}/lookup?ids={Uri.EscapeDataString(Value)}");
+            _selected = items.FirstOrDefault() ?? new LookupItem(Value, Value);
+        }
+        catch (ApiException)
+        {
+            _selected = new LookupItem(Value, Value);
+        }
+    }
+
+    private async Task<IEnumerable<LookupItem>> Search(string? text, CancellationToken token)
+    {
+        var url = $"/api/r/{Resource}/lookup?take=50&search={Uri.EscapeDataString(text ?? "")}";
+        foreach (var (k, v) in Filters ?? []) url += $"&{k}={Uri.EscapeDataString(v)}";
+        try
+        {
+            return await Api.GetAsync<List<LookupItem>>(url);
+        }
+        catch (ApiException)
+        {
+            return [];
+        }
+    }
+
+    private async Task OnSelected(LookupItem? item)
+    {
+        _selected = item;
+        await ValueChanged.InvokeAsync(item?.Id);
+    }
+}

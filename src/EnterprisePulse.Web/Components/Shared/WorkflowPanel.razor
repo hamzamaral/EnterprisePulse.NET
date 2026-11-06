@@ -1,0 +1,38 @@
+@inherits AppPage
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_instance == null)
+{
+    <MudText Color="Color.Secondary">@T("Bu kayıt için başlatılmış bir onay süreci yok.", "No approval flow was started for this record.")</MudText>
+}
+else
+{
+    <WorkflowView Instance="_instance" OnChanged="Changed" />
+}
+
+@code {
+    [Parameter, EditorRequired] public string EntityType { get; set; } = "";
+    [Parameter, EditorRequired] public string EntityId { get; set; } = "";
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private JsonObject? _instance;
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true;
+        await Run(async () => _instance = await Api.GetOrDefaultAsync<JsonObject>($"/api/workflow/entity/{EntityType}/{Uri.EscapeDataString(EntityId)}"));
+        _loading = false;
+    }
+
+    private async Task Changed()
+    {
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+}

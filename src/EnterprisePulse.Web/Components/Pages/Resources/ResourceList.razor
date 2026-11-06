@@ -1,0 +1,287 @@
+@page "/r/{Resource}"
+@inherits AppPage
+@implements IDisposable
+
+@if (_meta == null)
+{
+    <MudAlert Severity="Severity.Warning">@L("notFound")</MudAlert>
+    return;
+}
+@if (!Session.Has(_meta.PermissionFor("read", Meta.Registry)))
+{
+    <MudAlert Severity="Severity.Error">@L("forbidden")</MudAlert>
+    return;
+}
+
+<PageTitle>@Title · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@Title</MudText>
+    <MudTextField T="string" Value="_search" ValueChanged="OnSearch" Placeholder="@L("search")" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" DebounceInterval="350" Style="max-width:280px" />
+    @if (FilterFields.Count > 0)
+    {
+        <MudBadge Content="_filters.Count" Visible="_filters.Count > 0" Color="Color.Primary" Overlap="true">
+            <MudIconButton Icon="@Icons.Material.Filled.FilterList" OnClick="() => _showFilters = !_showFilters" Variant="@(_showFilters ? Variant.Filled : Variant.Outlined)" Size="Size.Medium" />
+        </MudBadge>
+    }
+    <MudMenu Icon="@Icons.Material.Filled.Download" Variant="Variant.Outlined" Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+        <MudMenuItem OnClick='() => Export("xlsx")' Icon="@Icons.Material.Filled.TableView">Excel (.xlsx)</MudMenuItem>
+        <MudMenuItem OnClick='() => Export("pdf")' Icon="@Icons.Material.Filled.PictureAsPdf">PDF</MudMenuItem>
+    </MudMenu>
+    @if (CanCreate)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Create">@L("new")</MudButton>
+    }
+</div>
+
+@if (_showFilters)
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true">
+        <MudGrid Spacing="2">
+            @foreach (var f in FilterFields)
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    @if (f.Kind == "enum")
+                    {
+                        <MudSelect T="string" Value="@_filters.GetValueOrDefault(f.Name)" ValueChanged="v => SetFilter(f.Name, v)" Label="@T(f.Label)" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                            @foreach (var v in f.Values ?? [])
+                            {
+                                <MudSelectItem T="string" Value="v">@Meta.EnumLabel(f.Enum, v, Locale)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else if (f.Kind == "bool")
+                    {
+                        <MudSelect T="string" Value="@_filters.GetValueOrDefault(f.Name)" ValueChanged="v => SetFilter(f.Name, v)" Label="@T(f.Label)" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem T="string" Value="@("true")">@L("yes")</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("false")">@L("no")</MudSelectItem>
+                        </MudSelect>
+                    }
+                    else if (f.Ref != null)
+                    {
+                        <RefPicker Resource="@f.Ref" Value="@_filters.GetValueOrDefault(f.Name)" ValueChanged="v => SetFilter(f.Name, v)" Label="@T(f.Label)" />
+                    }
+                    else if (f.Kind is "date" or "datetime")
+                    {
+                        <MudDateRangePicker DateRange="DateRange(f.Name)" DateRangeChanged="r => SetRange(f.Name, r)" Label="@T(f.Label)" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" />
+                    }
+                    else
+                    {
+                        <MudTextField T="string" Value="@_filters.GetValueOrDefault(f.Name)" ValueChanged="v => SetFilter(f.Name, v)" Label="@T(f.Label)" Variant="Variant.Outlined" Margin="Margin.Dense" DebounceInterval="400" Clearable="true" />
+                    }
+                </MudItem>
+            }
+        </MudGrid>
+        <MudButton Size="Size.Small" Class="mt-2" OnClick="ClearFilters" StartIcon="@Icons.Material.Filled.FilterListOff">@L("clear")</MudButton>
+    </MudPaper>
+}
+
+<MudTable @ref="_table" T="JsonObject" ServerData="Load" Dense="true" Hover="true" Striped="false" Elevation="1" Class="@(CanOpen ? "ep-clickable" : "")"
+          OnRowClick="(TableRowClickEventArgs<JsonObject> e) => Open(e.Item!)" RowsPerPage="25" Loading="_loading" LoadingProgressColor="Color.Primary">
+    <HeaderContent>
+        @foreach (var c in _columns)
+        {
+            <MudTh Style="@(Columns.AlignRight(c) ? "text-align:right" : "")">
+                <MudTableSortLabel T="JsonObject" SortLabel="@c.Name">@T(c.Label)</MudTableSortLabel>
+            </MudTh>
+        }
+        @if (View.Actions.Count > 0)
+        {
+            <MudTh />
+        }
+    </HeaderContent>
+    <RowTemplate>
+        @foreach (var c in _columns)
+        {
+            <MudTd DataLabel="@T(c.Label)" Style="@(Columns.AlignRight(c) ? "text-align:right" : "")"><CellValue Field="c" Row="context" Labels="_labels" /></MudTd>
+        }
+        @if (View.Actions.Count > 0)
+        {
+            <MudTd Style="text-align:right;white-space:nowrap" @onclick:stopPropagation="true">
+                @foreach (var a in View.Actions.Where(a => a.Visible(context) && (a.Permission == null || Session.Has(a.Permission))))
+                {
+                    <MudTooltip Text="@a.Text(Locale)">
+                        <MudIconButton Icon="@a.Icon" Size="Size.Small" Color="a.Color" OnClick="() => RunAction(a, context)" />
+                    </MudTooltip>
+                }
+            </MudTd>
+        }
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@L("noRecords")</MudText></NoRecordsContent>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="[10, 25, 50, 100]" RowsPerPageString="@T("Sayfa başına", "Rows per page")" InfoFormat="@("{first_item}-{last_item} / {all_items}")" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    [Parameter] public string Resource { get; set; } = "";
+
+    private ResourceMeta? _meta;
+    private MudTable<JsonObject>? _table;
+    private List<FieldMeta> _columns = [];
+    private Dictionary<string, Dictionary<string, string>> _labels = [];
+    private Dictionary<string, string> _fixed = [];
+    private Dictionary<string, string> _filters = [];
+    private string? _search;
+    private bool _showFilters;
+    private bool _loading;
+    private string? _loadedFor;
+
+    private ResourceView View => ResourceViews.For(Resource);
+
+    private string Title
+    {
+        get
+        {
+            var nav = Meta.Navigation.SelectMany(g => g.Items).FirstOrDefault(i => i.Resource == Resource && (i.Query == null || _fixed.All(f => i.Query.Contains($"{f.Key}={f.Value}"))));
+            return nav != null ? T(nav.Label) : T(_meta!.Label);
+        }
+    }
+
+    private bool CanCreate => _meta != null && !_meta.ReadOnly && !View.HideCreate && (!_meta.CustomCreate || View.CreateDialog != null || View.CreateHref != null)
+        && Session.Has(_meta.PermissionFor("create", Meta.Registry));
+
+    private bool CanOpen => _meta?.Field("id") != null || _meta?.Field("code") != null;
+
+    private List<FieldMeta> FilterFields =>
+        View.FilterFields?.Select(_meta!.Field).Where(f => f != null).Cast<FieldMeta>().ToList()
+        ?? _meta!.Fields.Where(f => !f.Hidden && !_fixed.ContainsKey(f.Name) && (f.Kind is "enum" or "bool" || (f.Ref != null && f.Name != "companyId")) && f.Name is not ("createdById")).Take(8).ToList();
+
+    protected override void OnInitialized() => Nav.LocationChanged += OnLocation;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Nav.Uri;
+        if (_loadedFor == key) return;
+        _loadedFor = key;
+        _meta = Meta.Get(Resource);
+        if (_meta == null) return;
+        _columns = Columns.For(_meta);
+        _fixed = ParseQuery();
+        _columns = _columns.Where(c => !_fixed.ContainsKey(c.Name)).ToList();
+        _filters = [];
+        _search = null;
+        if (_table != null) await _table.ReloadServerData();
+    }
+
+    private void OnLocation(object? sender, LocationChangedEventArgs e) => InvokeAsync(async () =>
+    {
+        await OnParametersSetAsync();
+        StateHasChanged();
+    });
+
+    private Dictionary<string, string> ParseQuery()
+    {
+        var uri = new Uri(Nav.Uri);
+        return Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).ToDictionary(kv => kv.Key, kv => kv.Value.ToString());
+    }
+
+    private string QueryString(bool paging, TableState? state = null)
+    {
+        var parts = new List<string>();
+        foreach (var (k, v) in _fixed.Concat(_filters)) parts.Add($"{Uri.EscapeDataString(k)}={Uri.EscapeDataString(v)}");
+        if (!string.IsNullOrWhiteSpace(_search)) parts.Add($"search={Uri.EscapeDataString(_search)}");
+        if (state != null)
+        {
+            if (paging) parts.Add($"page={state.Page + 1}&pageSize={state.PageSize}");
+            if (!string.IsNullOrEmpty(state.SortLabel) && state.SortDirection != SortDirection.None)
+                parts.Add($"sort={state.SortLabel}&order={(state.SortDirection == SortDirection.Descending ? "desc" : "asc")}");
+            else if (_meta!.Field("createdAt") != null) parts.Add("sort=createdAt&order=desc");
+        }
+        return string.Join("&", parts);
+    }
+
+    private TableState? _lastState;
+
+    private async Task<TableData<JsonObject>> Load(TableState state, CancellationToken token)
+    {
+        _lastState = state;
+        var result = new TableData<JsonObject> { Items = [], TotalItems = 0 };
+        if (_meta == null) return result;
+        _loading = true;
+        await Run(async () =>
+        {
+            var res = await Api.GetJsonAsync($"/api/r/{Resource}?{QueryString(true, state)}");
+            _labels = res["labels"].Deserialize<Dictionary<string, Dictionary<string, string>>>() ?? [];
+            result = new TableData<JsonObject>
+            {
+                Items = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList(),
+                TotalItems = res["meta"]!["total"]!.GetValue<int>(),
+            };
+        });
+        _loading = false;
+        return result;
+    }
+
+    private Task OnSearch(string? text)
+    {
+        _search = text;
+        return _table!.ReloadServerData();
+    }
+
+    private Task SetFilter(string field, string? value)
+    {
+        if (string.IsNullOrEmpty(value)) _filters.Remove(field); else _filters[field] = value;
+        return _table!.ReloadServerData();
+    }
+
+    private DateRange? DateRange(string field)
+    {
+        DateTime? from = DateTime.TryParse(_filters.GetValueOrDefault(field + "__gte"), out var a) ? a : null;
+        DateTime? to = DateTime.TryParse(_filters.GetValueOrDefault(field + "__lte"), out var b) ? b : null;
+        return from == null && to == null ? null : new DateRange(from, to);
+    }
+
+    private Task SetRange(string field, DateRange? range)
+    {
+        _filters.Remove(field + "__gte");
+        _filters.Remove(field + "__lte");
+        if (range?.Start != null) _filters[field + "__gte"] = range.Start.Value.ToString("yyyy-MM-dd");
+        if (range?.End != null) _filters[field + "__lte"] = range.End.Value.ToString("yyyy-MM-dd") + (_meta!.Field(field)?.Kind == "datetime" ? "T23:59:59" : "");
+        return _table!.ReloadServerData();
+    }
+
+    private Task ClearFilters()
+    {
+        _filters = [];
+        return _table!.ReloadServerData();
+    }
+
+    private Task Export(string format) =>
+        Run(() => Api.DownloadAsync($"/api/r/{Resource}/export?format={format}&{QueryString(false, _lastState)}", $"{Resource}.{format}"));
+
+    private async Task Create()
+    {
+        if (View.CreateHref != null)
+        {
+            Nav.NavigateTo(View.CreateHref);
+            return;
+        }
+        if (View.CreateDialog != null)
+        {
+            var dialog = await Dialogs.ShowAsync(View.CreateDialog, L("new"), new DialogParameters(), new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+            if (await dialog.Result is { Canceled: false }) await _table!.ReloadServerData();
+            return;
+        }
+        if (_meta!.Children.Count > 0 || _meta.DraftOnly)
+        {
+            var q = string.Join("&", _fixed.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
+            Nav.NavigateTo($"/r/{Resource}/new{(q.Length > 0 ? "?" + q : "")}");
+            return;
+        }
+        if (await FormDialog.OpenAsync(Dialogs, _meta, null, null, _fixed) != null) await _table!.ReloadServerData();
+    }
+
+    private void Open(JsonObject row)
+    {
+        if (!CanOpen) return;
+        Nav.NavigateTo($"/r/{Resource}/{Uri.EscapeDataString(row[_meta!.KeyField]!.ToString())}");
+    }
+
+    private async Task RunAction(ResourceAction a, JsonObject row)
+    {
+        await ActionRunner.RunAsync(a, new ActionContext { Api = Api, Record = row, Snackbar = Snackbar, Dialogs = Dialogs, Nav = Nav, Reload = () => _table!.ReloadServerData() });
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocation;
+}

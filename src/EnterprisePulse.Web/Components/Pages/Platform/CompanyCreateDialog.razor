@@ -1,0 +1,64 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Yeni şirket", "New company")</MudText></TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">@T("Merkez şube, vergi oranları, birimler, numara serileri, roller ve onay akışları otomatik oluşturulur.", "HQ branch, taxes, units, number series, roles and approval flows are created automatically.")</MudAlert>
+        <MudGrid Spacing="2">
+            <MudItem xs="4"><MudTextField @bind-Value="_m.Code" Label="@T("Kod", "Code")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" /></MudItem>
+            <MudItem xs="8"><MudTextField @bind-Value="_m.Name" Label="@T("Ad", "Name")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_m.LegalName" Label="@T("Ticari unvan", "Legal name")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_m.TaxNumber" Label="@T("Vergi no", "Tax number")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_m.TaxOffice" Label="@T("Vergi dairesi", "Tax office")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_m.Email" Label="@L("email")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_m.Phone" Label="@T("Telefon", "Phone")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_m.City" Label="@T("Şehir", "City")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6">
+                <MudSelect @bind-Value="_m.BaseCurrency" Label="@T("Ana para birimi", "Base currency")" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var c in new[] { "TRY", "USD", "EUR", "GBP" })
+                    {
+                        <MudSelectItem Value="c">@c</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_m.Address" Label="@T("Adres", "Address")" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || string.IsNullOrWhiteSpace(_m.Code) || string.IsNullOrWhiteSpace(_m.Name)">@L("save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private sealed class Model
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? LegalName { get; set; }
+        public string? TaxNumber { get; set; }
+        public string? TaxOffice { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public string BaseCurrency { get; set; } = "TRY";
+    }
+
+    private readonly Model _m = new();
+    private bool _busy;
+
+    private async Task Save()
+    {
+        _busy = true;
+        var ok = await Run(async () =>
+        {
+            await Api.PostAsync<JsonObject>("/api/companies", _m);
+            await Session.LoadMeAsync(Api);
+        }, L("saved"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+}

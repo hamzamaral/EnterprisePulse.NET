@@ -1,0 +1,90 @@
+@page "/workflow/inbox"
+@page "/workflow/instances"
+@inherits AppPage
+
+<PageTitle>@Title · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@Title</MudText>
+    @if (!IsInbox)
+    {
+        <MudSelect T="string" Value="_status" ValueChanged="SetStatus" Label="@L("status")" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:200px">
+            @foreach (var s in new[] { "PENDING", "APPROVED", "REJECTED", "CANCELLED" })
+            {
+                <MudSelectItem T="string" Value="s">@Meta.EnumLabel("WorkflowStatus", s, Locale)</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSwitch T="bool" Value="_mine" ValueChanged="SetMine" Label="@L("myRequests")" Color="Color.Primary" Disabled='!Session.Has("workflow:read")' />
+    }
+</div>
+<MudTabs Elevation="0" Class="mb-2" ActivePanelIndex="@(IsInbox ? 0 : 1)" ActivePanelIndexChanged="Switch">
+    <MudTabPanel Text="@L("inbox")" Icon="@Icons.Material.Filled.Inbox" />
+    <MudTabPanel Text="@T("Tüm süreçler", "All flows")" Icon="@Icons.Material.Filled.AccountTree" />
+</MudTabs>
+
+<MudTable @ref="_table" T="JsonObject" ServerData="Load" Dense="true" Hover="true" Elevation="1" Class="ep-clickable" RowsPerPage="25"
+          OnRowClick="OpenRow">
+    <HeaderContent>
+        <MudTh>@T("Başlık", "Title")</MudTh>
+        <MudTh>@T("Akış", "Flow")</MudTh>
+        <MudTh>@L("step")</MudTh>
+        <MudTh>@L("status")</MudTh>
+        <MudTh>@L("startedBy")</MudTh>
+        <MudTh>@L("startedAt")</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><b>@context["title"]</b></MudTd>
+        <MudTd>@context["definitionName"]</MudTd>
+        <MudTd>@context["currentStepOrder"]/@context["totalSteps"] · @context["currentStepName"]</MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color='Fmt.StatusColor(context["status"]?.ToString())'>@Meta.EnumLabel("WorkflowStatus", context["status"]?.ToString(), Locale)</MudChip></MudTd>
+        <MudTd>@context["startedByName"]</MudTd>
+        <MudTd>@Fmt.DateTime(context["startedAt"]!.GetValue<DateTime>())</MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4" Color="Color.Secondary">@(IsInbox ? T("Onayınızı bekleyen talep yok 🎉", "Nothing waiting for your approval") : L("noRecords"))</MudText></NoRecordsContent>
+    <PagerContent><MudTablePager PageSizeOptions="[25, 50, 100]" /></PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<JsonObject>? _table;
+    private string? _status;
+    private bool _mine;
+
+    private bool IsInbox => Nav.Uri.Contains("/workflow/inbox");
+    private string Title => IsInbox ? L("inbox") : T("Onay süreçleri", "Approval flows");
+
+    protected override void OnInitialized() => _mine = !Session.Has("workflow:read");
+
+    private async Task<TableData<JsonObject>> Load(TableState state, CancellationToken token)
+    {
+        var result = new TableData<JsonObject> { Items = [], TotalItems = 0 };
+        await Run(async () =>
+        {
+            var url = IsInbox
+                ? $"/api/workflow/inbox?page={state.Page + 1}&pageSize={state.PageSize}"
+                : $"/api/workflow/instances?page={state.Page + 1}&pageSize={state.PageSize}&mine={_mine.ToString().ToLowerInvariant()}{(_status != null ? "&status=" + _status : "")}";
+            var res = await Api.GetJsonAsync(url);
+            result = new TableData<JsonObject> { Items = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList(), TotalItems = res["meta"]!["total"]!.GetValue<int>() };
+        });
+        return result;
+    }
+
+    private Task SetStatus(string? s)
+    {
+        _status = s;
+        return _table!.ReloadServerData();
+    }
+
+    private Task SetMine(bool v)
+    {
+        _mine = v;
+        return _table!.ReloadServerData();
+    }
+
+    private void OpenRow(TableRowClickEventArgs<JsonObject> e) => Nav.NavigateTo($"/workflow/instances/{e.Item!["id"]}");
+
+    private async Task Switch(int index)
+    {
+        Nav.NavigateTo(index == 0 ? "/workflow/inbox" : "/workflow/instances");
+        await Task.Yield();
+        await _table!.ReloadServerData();
+    }
+}

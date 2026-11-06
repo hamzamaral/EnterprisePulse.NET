@@ -1,0 +1,118 @@
+@inherits AppPage
+
+@switch (Field.Kind)
+{
+    case "bool":
+        <MudSwitch T="bool" Value="GetBool()" ValueChanged="v => Set(JsonValue.Create(v))" Label="@Caption" Color="Color.Primary" Disabled="Disabled" />
+        break;
+    case "enum":
+        <MudSelect T="string" Value="GetString()" ValueChanged="v => Set(v == null ? null : JsonValue.Create(v))" Label="@Caption" Required="Field.Required"
+                   Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="!Field.Required" Dense="true">
+            @foreach (var value in Field.Values ?? [])
+            {
+                <MudSelectItem T="string" Value="value">@Meta.EnumLabel(Field.Enum, value, Locale)</MudSelectItem>
+            }
+        </MudSelect>
+        break;
+    case "int":
+    case "long":
+        <MudNumericField T="long?" Value="GetLong()" ValueChanged="v => Set(v == null ? null : JsonValue.Create(v.Value))" Label="@Caption" Required="Field.Required"
+                         Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense" HideSpinButtons="true" />
+        break;
+    case "decimal":
+        <MudNumericField T="decimal?" Value="GetDecimal()" ValueChanged="v => Set(v == null ? null : JsonValue.Create(v.Value))" Label="@Caption" Required="Field.Required"
+                         Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense" HideSpinButtons="true" Format="@NumberFormat"
+                         Culture="Fmt.Culture(Locale)" />
+        break;
+    case "date":
+        <MudDatePicker Date="GetDate()" DateChanged="SetDate" Label="@Caption" Required="Field.Required"
+                       Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Editable="true" Clearable="!Field.Required" />
+        break;
+    case "datetime":
+        <MudTextField T="string" Value="GetLocalDateTime()" ValueChanged="SetLocalDateTime" Label="@Caption" Required="Field.Required" Disabled="Disabled"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" InputType="InputType.DateTimeLocal" ShrinkLabel="true" />
+        break;
+    case "text":
+        <MudTextField T="string" Value="GetString()" ValueChanged="v => Set(string.IsNullOrEmpty(v) ? null : JsonValue.Create(v))" Label="@Caption" Required="Field.Required"
+                      Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="3" AutoGrow="true" MaxLines="10" />
+        break;
+    case "json":
+        <MudTextField T="string" Value="@JsonText" ValueChanged="SetJson" Label="@Caption"
+                      Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="4" Class="ep-mono" />
+        break;
+    default:
+        if (Field.Ref != null)
+        {
+            <RefPicker Resource="@Field.Ref" Value="@GetString()" ValueChanged="v => Set(v == null ? null : JsonValue.Create(v))" Label="@Caption"
+                       Required="Field.Required" Disabled="Disabled" InitialLabel="@RefLabel" Filters="RefFilters" />
+        }
+        else
+        {
+            <MudTextField T="string" Value="GetString()" ValueChanged="v => Set(string.IsNullOrEmpty(v) ? null : JsonValue.Create(v))" Label="@Caption"
+                          Required="Field.Required" Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          InputType="@InputKind" />
+        }
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired] public FieldMeta Field { get; set; } = null!;
+    [Parameter, EditorRequired] public JsonObject Data { get; set; } = null!;
+    [Parameter] public Dictionary<string, Dictionary<string, string>>? Labels { get; set; }
+    [Parameter] public Dictionary<string, string>? RefFilters { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnChange { get; set; }
+
+    private string Caption => T(Field.Label);
+
+    private string NumberFormat => Field.Scale is > 2 ? "N" + Field.Scale : "N2";
+
+    private string JsonText => Data[Field.Name]?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "";
+
+    private InputType InputKind => Field.Name.Contains("email", StringComparison.OrdinalIgnoreCase) ? InputType.Email : InputType.Text;
+
+    private string? RefLabel
+    {
+        get
+        {
+            var id = GetString();
+            return id != null && Labels != null && Labels.TryGetValue(Field.Name, out var map) && map.TryGetValue(id, out var label) ? label : null;
+        }
+    }
+
+    private string? GetString() => Data[Field.Name] is JsonValue v ? v.ToString() : null;
+    private bool GetBool() => Data[Field.Name] is JsonValue v && v.TryGetValue<bool>(out var b) && b;
+
+    private long? GetLong() => Data[Field.Name] is JsonValue v && long.TryParse(v.ToString(), out var l) ? l : null;
+
+    private decimal? GetDecimal() =>
+        Data[Field.Name] is JsonValue v && decimal.TryParse(v.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+
+    private DateTime? GetDate() => DateTime.TryParse(GetString(), out var d) ? d.Date : null;
+
+    private string? GetLocalDateTime() =>
+        DateTime.TryParse(GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime().ToString("yyyy-MM-ddTHH:mm") : null;
+
+    private Task SetDate(DateTime? v) => Set(v == null ? null : JsonValue.Create(v.Value.ToString("yyyy-MM-dd")));
+
+    private Task SetLocalDateTime(string? value) =>
+        Set(DateTime.TryParse(value, out var local) ? JsonValue.Create(DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime().ToString("O")) : null);
+
+    private Task SetJson(string? value)
+    {
+        try
+        {
+            return Set(string.IsNullOrWhiteSpace(value) ? null : JsonNode.Parse(value));
+        }
+        catch (JsonException)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    private async Task Set(JsonNode? value)
+    {
+        Data[Field.Name] = value;
+        await OnChange.InvokeAsync(Field.Name);
+    }
+}

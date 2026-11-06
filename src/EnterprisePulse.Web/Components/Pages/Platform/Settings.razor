@@ -1,0 +1,65 @@
+@page "/settings"
+@inherits AppPage
+
+<PageTitle>@L("settings") · EnterprisePulse</PageTitle>
+<MudText Typo="Typo.h5" Class="mb-4">@L("settings")</MudText>
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.subtitle1" Class="mb-3"><b>@T("Genel ayarlar", "General settings")</b> · @Session.Company?.Name</MudText>
+            <MudStack Spacing="2">
+                <MudSelect @bind-Value="_dateFormat" Label="@T("Tarih biçimi", "Date format")" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="!CanEdit">
+                    <MudSelectItem Value="@("dd.MM.yyyy")">dd.MM.yyyy</MudSelectItem>
+                    <MudSelectItem Value="@("yyyy-MM-dd")">yyyy-MM-dd</MudSelectItem>
+                    <MudSelectItem Value="@("MM/dd/yyyy")">MM/dd/yyyy</MudSelectItem>
+                </MudSelect>
+                <MudTextField @bind-Value="_timezone" Label="@T("Saat dilimi", "Time zone")" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="!CanEdit" />
+                <MudNumericField @bind-Value="_fiscalMonth" Label="@T("Mali yıl başlangıç ayı", "Fiscal year start month")" Min="1" Max="12" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="!CanEdit" />
+                @if (CanEdit)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Style="width:fit-content">@L("save")</MudButton>
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="7">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.subtitle1" Class="mb-3"><b>@T("Tanımlar", "Definitions")</b></MudText>
+            <MudList T="string" Dense="true">
+                @foreach (var (resource, icon) in Links)
+                {
+                    if (Meta.Get(resource) is not { } r || !Session.Has(r.PermissionFor("read", Meta.Registry))) continue;
+                    <MudListItem T="string" Href="@($"/r/{resource}")" Icon="@icon">@T(r.Label)</MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private static readonly (string, string)[] Links =
+    [
+        ("currencies", Icons.Material.Filled.CurrencyExchange),
+        ("exchange-rates", Icons.Material.Filled.ShowChart),
+        ("tax-rates", Icons.Material.Filled.Percent),
+        ("units", Icons.Material.Filled.Straighten),
+        ("number-sequences", Icons.Material.Filled.FormatListNumbered),
+        ("workflow-definitions", Icons.Material.Filled.AccountTree),
+        ("companies", Icons.Material.Filled.Business),
+        ("branches", Icons.Material.Filled.Store),
+    ];
+
+    private string _dateFormat = "dd.MM.yyyy", _timezone = "Europe/Istanbul";
+    private int _fiscalMonth = 1;
+    private bool CanEdit => Session.Has("settings:update");
+
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var s = await Api.GetJsonAsync("/api/settings/general");
+        _dateFormat = s["dateFormat"]?.ToString() ?? _dateFormat;
+        _timezone = s["timezone"]?.ToString() ?? _timezone;
+        _fiscalMonth = s["fiscalYearStartMonth"]?.GetValue<int>() ?? 1;
+    });
+
+    private Task Save() => Run(() => Api.PutAsync<JsonObject>("/api/settings/general", new { dateFormat = _dateFormat, timezone = _timezone, fiscalYearStartMonth = _fiscalMonth }), L("saved"));
+}

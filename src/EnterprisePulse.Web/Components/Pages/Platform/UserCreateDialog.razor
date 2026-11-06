@@ -1,0 +1,65 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Yeni kullanıcı", "New user")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12"><MudTextField @bind-Value="_email" Label="@L("email")" InputType="InputType.Email" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true"
+                                           HelperText="@T("E-posta başka şirkette kayıtlıysa kullanıcı bu şirkete eklenir.", "If the e-mail exists in another company the user is added here.")" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_first" Label="@T("Ad", "First name")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_last" Label="@T("Soyad", "Last name")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_phone" Label="@T("Telefon", "Phone")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_password" Label="@L("password")" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          HelperText="@T("Boş bırakılırsa davet e-postası gönderilir", "Leave empty to send an invitation e-mail")" /></MudItem>
+            <MudItem xs="12">
+                <MudSelect T="string" Label="@L("roles")" MultiSelection="true" @bind-SelectedValues="_roleIds" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           ToStringFunc="@(id => _roles.FirstOrDefault(r => r.Id == id)?.Label ?? id)">
+                    @foreach (var r in _roles)
+                    {
+                        <MudSelectItem T="string" Value="r.Id">@r.Label</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect T="string" Label="@L("branch")" @bind-Value="_branchId" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var b in Session.Company?.Branches ?? [])
+                    {
+                        <MudSelectItem T="string" Value="b.Id.ToString()">@b.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            @if (Session.Me?.User.IsSuperAdmin == true)
+            {
+                <MudItem xs="12"><MudCheckBox @bind-Value="_superAdmin" Label="@T("Süper yönetici", "Super admin")" Color="Color.Error" /></MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_first)">@L("save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    private string _email = "", _first = "", _last = "";
+    private string? _phone, _password, _branchId;
+    private bool _superAdmin, _busy;
+    private IEnumerable<string> _roleIds = [];
+    private List<LookupItem> _roles = [];
+
+    protected override async Task OnInitializedAsync() =>
+        await Run(async () => _roles = await Api.GetAsync<List<LookupItem>>("/api/r/roles/lookup?take=100"));
+
+    private async Task Save()
+    {
+        _busy = true;
+        var ok = await Run(() => Api.PostAsync<JsonObject>("/api/users", new
+        {
+            email = _email, firstName = _first, lastName = _last, phone = _phone, password = string.IsNullOrEmpty(_password) ? null : _password,
+            roleIds = _roleIds.Select(Guid.Parse).ToList(), branchId = _branchId == null ? (Guid?)null : Guid.Parse(_branchId), isSuperAdmin = _superAdmin,
+        }), L("saved"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+}

@@ -1,0 +1,27 @@
+@inherits AppPage
+
+@if (Field.Kind == "enum" && Row[Field.Name] != null)
+{
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Fmt.StatusColor(Row[Field.Name]?.ToString())">@Fmt.Value(Field, Row[Field.Name], Meta, Locale)</MudChip>
+}
+else if (Field.Kind == "bool")
+{
+    @if (Row[Field.Name]?.GetValue<bool>() == true)
+    {
+        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+    }
+    else
+    {
+        <MudIcon Icon="@Icons.Material.Outlined.Circle" Color="Color.Default" Size="Size.Small" />
+    }
+}
+else
+{
+    @Fmt.Value(Field, Row[Field.Name], Meta, Locale, Labels)
+}
+
+@code {
+    [Parameter, EditorRequired] public FieldMeta Field { get; set; } = null!;
+    [Parameter, EditorRequired] public JsonObject Row { get; set; } = null!;
+    [Parameter] public Dictionary<string, Dictionary<string, string>>? Labels { get; set; }
+}

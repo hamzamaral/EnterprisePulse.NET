@@ -1,0 +1,64 @@
+@inherits AppPage
+
+<MudGrid Spacing="2">
+    @foreach (var f in Fields)
+    {
+        <MudItem xs="12" sm="@(Wide(f) ? 12 : 6)" md="@(Wide(f) ? 12 : Columns)">
+            @if (Editable(f))
+            {
+                <FieldInput Field="f" Data="Data" Labels="Labels" Disabled="Disabled" OnChange="Changed" />
+            }
+            else
+            {
+                <MudField Label="@T(f.Label)" Variant="Variant.Text" Margin="Margin.Dense">
+                    @if (f.Kind == "enum" && Data[f.Name] != null)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Data[f.Name]?.ToString())">@Fmt.Value(f, Data[f.Name], Meta, Locale)</MudChip>
+                    }
+                    else if (f.Kind == "json")
+                    {
+                        <div class="ep-json">@Data[f.Name]?.ToJsonString(new JsonSerializerOptions { WriteIndented = true })</div>
+                    }
+                    else
+                    {
+                        @(Fmt.Value(f, Data[f.Name], Meta, Locale, Labels) is { Length: > 0 } text ? text : "—")
+                    }
+                </MudField>
+            }
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired] public ResourceMeta Resource { get; set; } = null!;
+    [Parameter, EditorRequired] public JsonObject Data { get; set; } = null!;
+    [Parameter] public Dictionary<string, Dictionary<string, string>>? Labels { get; set; }
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ShowSystem { get; set; }
+    [Parameter] public string[] FixedFields { get; set; } = [];
+    [Parameter] public int Columns { get; set; } = 4;
+    [Parameter] public EventCallback<string> OnChange { get; set; }
+
+    private ResourceView View => ResourceViews.For(Resource.Resource);
+
+    private IEnumerable<FieldMeta> Fields => Resource.Fields.Where(f =>
+        !f.Hidden && !View.HiddenFields.Contains(f.Name) && !FixedFields.Contains(f.Name) &&
+        (ShowSystem && !IsNew ? f.Name is not ("companyId" or "deletedAt") : !f.IsSystem) &&
+        (!IsNew || Editable(f)) && !(IsNew && f.Name == "number" && Resource.Sequence != null));
+
+    private bool Editable(FieldMeta f)
+    {
+        if (ReadOnly || f.IsSystem || View.ReadOnlyFields.Contains(f.Name)) return false;
+        if (f.ReadOnly) return IsNew && Resource.CompositeKey?.Contains(f.Name) == true;
+        if (!IsNew && Resource.CompositeKey?.Contains(f.Name) == true) return false;
+        if (!IsNew && f.Name == "status" && Resource.DraftLocked) return false;
+        if (!IsNew && f.Name == "number" && Resource.Sequence != null) return false;
+        return true;
+    }
+
+    private static bool Wide(FieldMeta f) => f.Kind is "text" or "json";
+
+    private Task Changed(string field) => OnChange.InvokeAsync(field);
+}

@@ -1,0 +1,90 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsNew ? L("new") : L("edit")) · @T(Resource.Label)</MudText>
+    </TitleContent>
+    <DialogContent>
+        <ResourceForm Resource="Resource" Data="_data" Labels="Labels" IsNew="IsNew" FixedFields="Fixed.Keys.ToArray()" Columns="6" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_busy">@L("save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public ResourceMeta Resource { get; set; } = null!;
+    [Parameter] public JsonObject? Record { get; set; }
+    [Parameter] public Dictionary<string, Dictionary<string, string>>? Labels { get; set; }
+    [Parameter] public Dictionary<string, string> Fixed { get; set; } = [];
+
+    private bool IsNew => Record == null;
+    private JsonObject _data = [];
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        _data = Record != null ? (JsonObject)Record.DeepClone() : Defaults();
+        foreach (var (k, v) in Fixed) _data[k] = v;
+    }
+
+    private JsonObject Defaults()
+    {
+        var data = new JsonObject();
+        foreach (var f in Resource.Fields.Where(f => f.Default != null && !f.IsSystem))
+        {
+            data[f.Name] = f.Kind switch
+            {
+                "bool" => JsonValue.Create(f.Default == "true"),
+                "int" or "long" when long.TryParse(f.Default, out var l) => JsonValue.Create(l),
+                "decimal" when decimal.TryParse(f.Default, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) => JsonValue.Create(d),
+                "enum" or "string" or "text" => JsonValue.Create(f.Default),
+                _ => null,
+            };
+        }
+        return data;
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? saved = null;
+        var ok = await Run(async () =>
+        {
+            var body = Payload();
+            var res = IsNew
+                ? await Api.PostAsync<JsonObject>($"/api/r/{Resource.Resource}", body)
+                : await Api.PatchAsync<JsonObject>($"/api/r/{Resource.Resource}/{Uri.EscapeDataString(Record![Resource.KeyField]!.ToString())}", body);
+            saved = res["data"] as JsonObject;
+        }, L("saved"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(saved));
+    }
+
+    private JsonObject Payload()
+    {
+        var body = new JsonObject();
+        foreach (var f in Resource.Fields.Where(f => !f.IsSystem && _data.ContainsKey(f.Name)))
+        {
+            body[f.Name] = _data[f.Name]?.DeepClone();
+        }
+        return body;
+    }
+
+    public static async Task<JsonObject?> OpenAsync(IDialogService dialogs, ResourceMeta resource, JsonObject? record = null,
+        Dictionary<string, Dictionary<string, string>>? labels = null, Dictionary<string, string>? fixedValues = null)
+    {
+        var parameters = new DialogParameters<FormDialog>
+        {
+            { x => x.Resource, resource },
+            { x => x.Record, record },
+            { x => x.Labels, labels },
+            { x => x.Fixed, fixedValues ?? [] },
+        };
+        var dialog = await dialogs.ShowAsync<FormDialog>(null, parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        return result is { Canceled: false } ? result.Data as JsonObject ?? [] : null;
+    }
+}

@@ -1,0 +1,68 @@
+@page "/"
+@inherits AppPage
+
+<PageTitle>@L("dashboard") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <div class="ep-grow">
+        <MudText Typo="Typo.h5">@T("Merhaba", "Hello"), @Session.Me?.User.FirstName</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Session.Company?.Name · @DateTime.Now.ToString("dd MMMM yyyy, dddd", Fmt.Culture(Locale))</MudText>
+    </div>
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+</div>
+
+@if (_sections == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    @foreach (var section in _sections)
+    {
+        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2"><b>@section!["title"]</b></MudText>
+        <MudGrid Spacing="3">
+            @foreach (var card in section!["cards"]!.AsArray().Select(c => c!))
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <MudPaper Elevation="1" Class="pa-4" Style='@(card["link"] != null ? "cursor:pointer" : "")' @onclick="() => Go(card)">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color='ColorOf(card["color"]?.ToString())' Variant="Variant.Outlined" Rounded="true">
+                                <MudIcon Icon='@Icon(card["icon"]?.ToString())' />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h5"><b>@card["value"]</b></MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@card["title"]</MudText>
+                                @if (card["hint"] is { } hint)
+                                {
+                                    <MudText Typo="Typo.caption">@hint</MudText>
+                                }
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+@code {
+    private JsonArray? _sections;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        _sections = null;
+        await Run(async () => _sections = await Api.GetAsync<JsonArray>("/api/dashboard"));
+        _sections ??= [];
+    }
+
+    private void Go(JsonNode? card)
+    {
+        if (card?["link"]?.ToString() is { } link) Nav.NavigateTo(link);
+    }
+
+    public static string Icon(string? name) =>
+        typeof(Icons.Material.Filled).GetField(name ?? "")?.GetValue(null) as string ?? Icons.Material.Filled.Insights;
+
+    public static Color ColorOf(string? name) => Enum.TryParse<Color>(name, true, out var c) ? c : Color.Primary;
+}

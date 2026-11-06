@@ -1,0 +1,40 @@
+@page "/workflow/instances/{Id:guid}"
+@inherits AppPage
+
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/workflow/inbox" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@L("approvalFlow")</MudText>
+    @if (_instance != null && EntityLink is { } link)
+    {
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.OpenInNew" Href="@link">@T("Kaydı aç", "Open record")</MudButton>
+    }
+</div>
+@if (_instance == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <WorkflowView Instance="_instance" OnChanged="Load" />
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _instance;
+
+    private string? EntityLink
+    {
+        get
+        {
+            var model = _instance!["entityType"]!.ToString();
+            var resource = Meta.Resources.FirstOrDefault(r => r.Model == model);
+            return resource == null ? null : $"/r/{resource.Resource}/{_instance["entityId"]}";
+        }
+    }
+
+    protected override Task OnParametersSetAsync() => Load();
+
+    private async Task Load() => await Run(async () => _instance = await Api.GetJsonAsync($"/api/workflow/instances/{Id}"));
+}

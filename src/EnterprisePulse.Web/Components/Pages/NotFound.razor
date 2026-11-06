@@ -1,0 +1,8 @@
+﻿@page "/not-found"
+@inherits AppPage
+
+<MudStack AlignItems="AlignItems.Center" Class="mt-16">
+    <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" />
+    <MudText Typo="Typo.h5">@L("notFound")</MudText>
+    <MudButton Variant="Variant.Text" Href="/">@L("dashboard")</MudButton>
+</MudStack>

@@ -1,0 +1,46 @@
+@inherits AppPage
+
+<MudSimpleTable Dense="true" Outlined="true">
+    <thead>
+        <tr>
+            <th>@T("Tarih", "Date")</th>
+            <th>@T("Kullanıcı", "User")</th>
+            <th>@T("İşlem", "Action")</th>
+            <th>@T("Değişiklikler", "Changes")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr>
+                <td style="white-space:nowrap">@Fmt.DateTime(row["createdAt"]!.GetValue<DateTime>())</td>
+                <td>@row["userEmail"]</td>
+                <td><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@row["action"]</MudChip></td>
+                <td>
+                    @foreach (var (key, value) in (row["newValues"] as JsonObject ?? []))
+                    {
+                        <div class="ep-mono"><b>@key</b>: @(row["oldValues"]?[key]?.ToJsonString() ?? "∅") → @(value?.ToJsonString() ?? "∅")</div>
+                    }
+                </td>
+            </tr>
+        }
+        @if (_rows.Count == 0)
+        {
+            <tr><td colspan="4"><MudText Typo="Typo.body2" Color="Color.Secondary">@L("noRecords")</MudText></td></tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    [Parameter, EditorRequired] public string EntityType { get; set; } = "";
+    [Parameter, EditorRequired] public string EntityId { get; set; } = "";
+
+    private List<JsonObject> _rows = [];
+
+    protected override async Task OnParametersSetAsync() =>
+        await Run(async () =>
+        {
+            var res = await Api.GetJsonAsync($"/api/r/audit-logs?entityType={EntityType}&entityId={EntityId}&sort=createdAt&order=desc&pageSize=100");
+            _rows = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
+        });
+}

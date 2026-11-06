@@ -1,0 +1,104 @@
+@inherits AppPage
+
+@if (_resource == null)
+{
+    return;
+}
+<MudToolBar Dense="true" Gutters="false" Class="mb-2">
+    <MudText Typo="Typo.subtitle1">@T(_resource.Label) <MudText Inline="true" Typo="Typo.caption">(@_rows.Count)</MudText></MudText>
+    <MudSpacer />
+    @if (CanCreate)
+    {
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="Add">@L("add")</MudButton>
+    }
+</MudToolBar>
+<MudTable Items="_rows" Dense="true" Hover="true" Loading="_loading" Elevation="0" Outlined="true" Class="@(CanEdit ? "ep-clickable" : "")"
+          OnRowClick="(TableRowClickEventArgs<JsonObject> e) => Edit(e.Item!)" T="JsonObject">
+    <HeaderContent>
+        @foreach (var c in _columns)
+        {
+            <MudTh Style="@(Columns.AlignRight(c) ? "text-align:right" : "")">@T(c.Label)</MudTh>
+        }
+        @if (CanDelete)
+        {
+            <MudTh Style="width:48px" />
+        }
+    </HeaderContent>
+    <RowTemplate>
+        @foreach (var c in _columns)
+        {
+            <MudTd Style="@(Columns.AlignRight(c) ? "text-align:right" : "")"><CellValue Field="c" Row="context" Labels="_labels" /></MudTd>
+        }
+        @if (CanDelete)
+        {
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => Delete(context)" />
+            </MudTd>
+        }
+    </RowTemplate>
+    <NoRecordsContent><MudText Typo="Typo.body2" Color="Color.Secondary">@L("noRecords")</MudText></NoRecordsContent>
+    <FooterContent>@if (Footer != null) { @Footer(_rows) }</FooterContent>
+</MudTable>
+
+@code {
+    [Parameter, EditorRequired] public ChildMeta Child { get; set; } = null!;
+    [Parameter, EditorRequired] public string ParentId { get; set; } = "";
+    [Parameter] public bool Editable { get; set; } = true;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public RenderFragment<List<JsonObject>>? Footer { get; set; }
+
+    private ResourceMeta? _resource;
+    private List<FieldMeta> _columns = [];
+    private List<JsonObject> _rows = [];
+    private Dictionary<string, Dictionary<string, string>> _labels = [];
+    private bool _loading;
+
+    private bool Allowed(string action) => _resource != null && Session.Has(_resource.PermissionFor(action, Meta.Registry));
+    private bool CanCreate => Editable && !_resource!.ReadOnly && !_resource.CustomCreate && Allowed("create");
+    private bool CanEdit => Editable && !_resource!.ReadOnly && _resource.Field("id") != null && Allowed("update");
+    private bool CanDelete => Editable && !_resource!.ReadOnly && _resource.Field("id") != null && Allowed("delete");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _resource = Meta.Get(Child.Resource);
+        if (_resource == null) return;
+        _columns = Columns.For(_resource, Child.Field, 9);
+        await Load();
+    }
+
+    public async Task Load()
+    {
+        _loading = true;
+        await Run(async () =>
+        {
+            var sort = _resource!.Field("lineNo") != null ? "lineNo" : _resource.Field("order") != null ? "order" : _resource.Field("createdAt") != null ? "createdAt" : null;
+            var res = await Api.GetJsonAsync($"/api/r/{Child.Resource}?{Child.Field}={ParentId}&pageSize=500{(sort != null ? "&sort=" + sort + "&order=asc" : "")}");
+            _rows = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
+            _labels = res["labels"].Deserialize<Dictionary<string, Dictionary<string, string>>>() ?? [];
+        });
+        _loading = false;
+    }
+
+    private async Task Add()
+    {
+        if (await FormDialog.OpenAsync(Dialogs, _resource!, null, null, new() { [Child.Field] = ParentId }) != null) await Changed();
+    }
+
+    private async Task Edit(JsonObject row)
+    {
+        if (!CanEdit) return;
+        if (await FormDialog.OpenAsync(Dialogs, _resource!, row, _labels, new() { [Child.Field] = ParentId }) != null) await Changed();
+    }
+
+    private async Task Delete(JsonObject row)
+    {
+        if (!await Confirm(L("confirmDelete"))) return;
+        if (await Run(() => Api.DeleteAsync($"/api/r/{Child.Resource}/{row["id"]}"), L("deleted"))) await Changed();
+    }
+
+    private async Task Changed()
+    {
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+}

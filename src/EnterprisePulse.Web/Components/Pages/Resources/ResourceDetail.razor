@@ -1,0 +1,242 @@
+@page "/r/{Resource}/{Id}"
+@inherits AppPage
+
+@if (_meta == null)
+{
+    <MudAlert Severity="Severity.Warning">@L("notFound")</MudAlert>
+    return;
+}
+@if (_record == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    return;
+}
+
+<PageTitle>@Heading · EnterprisePulse</PageTitle>
+<div class="ep-page-header ep-no-print">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="Back" />
+    <div class="ep-grow">
+        <MudText Typo="Typo.caption" Color="Color.Secondary">@T(_meta.Label)</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@Heading</MudText>
+            @if (_record["status"] is { } status && _meta.Field("status") is { Kind: "enum" } sf)
+            {
+                <MudChip T="string" Color="Fmt.StatusColor(status.ToString())" Size="Size.Small">@Meta.EnumLabel(sf.Enum, status.ToString(), Locale)</MudChip>
+            }
+        </MudStack>
+    </div>
+    @if (!IsNew)
+    {
+        @foreach (var a in VisibleActions)
+        {
+            <MudButton Variant="Variant.Outlined" Color="a.Color" StartIcon="@a.Icon" OnClick="() => RunAction(a)" Size="Size.Small">@a.Text(Locale)</MudButton>
+        }
+        @if (CanEdit && !_editing)
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="() => _editing = true" Size="Size.Small">@L("edit")</MudButton>
+        }
+        @if (CanDelete)
+        {
+            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="Delete" />
+        }
+    }
+</div>
+
+@if (_lockedReason != null)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3 ep-no-print">@_lockedReason</MudAlert>
+}
+
+<MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4" @bind-ActivePanelIndex="_tab" KeepPanelsAlive="false">
+    <MudTabPanel Text="@L("details")" Icon="@Icons.Material.Filled.Article">
+        <ResourceForm Resource="_meta" Data="_record" Labels="_labels" IsNew="IsNew" ReadOnly="!IsNew && !_editing" ShowSystem="!IsNew && !_editing" FixedFields="FixedKeys" />
+        @if (IsNew || _editing)
+        {
+            <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-4">
+                <MudButton OnClick="CancelEdit">@L("cancel")</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy" StartIcon="@Icons.Material.Filled.Save">@L("save")</MudButton>
+            </MudStack>
+        }
+    </MudTabPanel>
+    @if (!IsNew)
+    {
+        @foreach (var child in Children)
+        {
+            <MudTabPanel Text="@ChildTitle(child)" Icon="@Icons.Material.Filled.List">
+                <ChildGrid Child="child" ParentId="@Id" Editable="ChildEditable" OnChanged="Reload" />
+            </MudTabPanel>
+        }
+        @foreach (var tab in View.Tabs.Where(t => t.Permission == null || Session.Has(t.Permission)))
+        {
+            <MudTabPanel Text="@tab.Title">
+                <DynamicComponent Type="tab.Component" Parameters="TabParameters" />
+            </MudTabPanel>
+        }
+        @if (View.WorkflowEntity != null)
+        {
+            <MudTabPanel Text="@L("approvalFlow")" Icon="@Icons.Material.Filled.AccountTree">
+                <WorkflowPanel EntityType="@View.WorkflowEntity" EntityId="@Id" OnChanged="Reload" />
+            </MudTabPanel>
+        }
+        @if (_meta.Tenant && _meta.Field("id") != null && Session.Has("files:read"))
+        {
+            <MudTabPanel Text="@L("files")" Icon="@Icons.Material.Filled.AttachFile">
+                <FilesPanel EntityType="@_meta.Model" EntityId="@Id" />
+            </MudTabPanel>
+        }
+        @if (Session.Has("audit:read") && _meta.Field("id") != null)
+        {
+            <MudTabPanel Text="@L("history")" Icon="@Icons.Material.Filled.History">
+                <HistoryPanel EntityType="@_meta.Model" EntityId="@Id" />
+            </MudTabPanel>
+        }
+    }
+</MudTabs>
+
+@code {
+    [Parameter] public string Resource { get; set; } = "";
+    [Parameter] public string Id { get; set; } = "";
+
+    private ResourceMeta? _meta;
+    private JsonObject? _record;
+    private Dictionary<string, Dictionary<string, string>> _labels = [];
+    private Dictionary<string, string> _fixed = [];
+    private bool _editing;
+    private bool _busy;
+    private int _tab;
+    private string? _loadedFor;
+
+    private bool IsNew => Id == "new";
+    private ResourceView View => ResourceViews.For(Resource);
+    private string[] FixedKeys => _fixed.Keys.ToArray();
+
+    private bool IsDraft => _record?["status"]?.ToString() is null or "DRAFT";
+    private string? _lockedReason => !IsNew && _meta!.DraftLocked && !IsDraft
+        ? T("Bu belge taslak durumunda olmadığı için satırları ve alanları değiştirilemez.", "This document is no longer a draft, its fields and lines are locked.")
+        : null;
+
+    private bool Allowed(string action) => Session.Has(_meta!.PermissionFor(action, Meta.Registry));
+    private bool CanEdit => !_meta!.ReadOnly && !View.HideEdit && Allowed("update") && (!_meta.DraftLocked || IsDraft);
+    private bool CanDelete => !_meta!.ReadOnly && !View.HideDelete && Allowed("delete") && (!_meta.DraftLocked || IsDraft);
+    private bool ChildEditable => CanEdit;
+
+    private IEnumerable<ChildMeta> Children => _meta!.Children.Where(c => !View.HiddenChildren.Contains(c.Resource) && Meta.Get(c.Resource) is { } m && Session.Has(m.PermissionFor("read", Meta.Registry)));
+
+    private IEnumerable<ResourceAction> VisibleActions => View.Actions.Where(a => a.Visible(_record!) && (a.Permission == null || Session.Has(a.Permission)));
+
+    private string Heading
+    {
+        get
+        {
+            if (IsNew) return L("new");
+            var parts = _meta!.LabelFields.Select(f => _record![f]?.ToString()).Where(s => !string.IsNullOrEmpty(s));
+            var text = string.Join(" ", parts);
+            return text.Length > 0 ? text : Id;
+        }
+    }
+
+    private Dictionary<string, object?> TabParameters => new()
+    {
+        ["Record"] = _record,
+        ["ResourceMeta"] = _meta,
+        ["OnChanged"] = EventCallback.Factory.Create(this, Reload),
+    };
+
+    private string ChildTitle(ChildMeta c) => Meta.Get(c.Resource) is { } m ? T(m.Label) : c.Name;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == $"{Resource}/{Id}") return;
+        _loadedFor = $"{Resource}/{Id}";
+        _meta = Meta.Get(Resource);
+        _record = null;
+        _editing = false;
+        _tab = 0;
+        if (_meta == null) return;
+        if (IsNew)
+        {
+            var uri = new Uri(Nav.Uri);
+            _fixed = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).ToDictionary(kv => kv.Key, kv => kv.Value.ToString());
+            _record = [];
+            foreach (var (k, v) in _fixed) _record[k] = v;
+            foreach (var f in _meta.Fields.Where(f => f.Default != null && !f.IsSystem && f.Kind is "bool" or "enum" or "string"))
+            {
+                _record[f.Name] ??= f.Kind == "bool" ? JsonValue.Create(f.Default == "true") : JsonValue.Create(f.Default);
+            }
+            return;
+        }
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        await Run(async () =>
+        {
+            var res = await Api.GetJsonAsync($"/api/r/{Resource}/{Uri.EscapeDataString(Id)}");
+            _record = res["data"]!.AsObject();
+            _labels = res["labels"].Deserialize<Dictionary<string, Dictionary<string, string>>>() ?? [];
+        });
+        StateHasChanged();
+    }
+
+    private JsonObject Payload()
+    {
+        var body = new JsonObject();
+        foreach (var f in _meta!.Fields.Where(f => !f.IsSystem && _record!.ContainsKey(f.Name)))
+        {
+            body[f.Name] = _record![f.Name]?.DeepClone();
+        }
+        return body;
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        await Run(async () =>
+        {
+            if (IsNew)
+            {
+                var res = await Api.PostAsync<JsonObject>($"/api/r/{Resource}", Payload());
+                var key = res["data"]![_meta!.KeyField]!.ToString();
+                Nav.NavigateTo($"/r/{Resource}/{Uri.EscapeDataString(key)}", replace: true);
+            }
+            else
+            {
+                await Api.PatchAsync<JsonObject>($"/api/r/{Resource}/{Uri.EscapeDataString(Id)}", Payload());
+                _editing = false;
+                await Reload();
+            }
+        }, L("saved"));
+        _busy = false;
+    }
+
+    private async Task CancelEdit()
+    {
+        if (IsNew)
+        {
+            Back();
+            return;
+        }
+        _editing = false;
+        await Reload();
+    }
+
+    private async Task Delete()
+    {
+        if (!await Confirm(L("confirmDelete"))) return;
+        if (await Run(() => Api.DeleteAsync($"/api/r/{Resource}/{Uri.EscapeDataString(Id)}"), L("deleted"))) Back();
+    }
+
+    private Task RunAction(ResourceAction a) =>
+        ActionRunner.RunAsync(a, new ActionContext { Api = Api, Record = _record!, Snackbar = Snackbar, Dialogs = Dialogs, Nav = Nav, Reload = Reload });
+
+    private void Back()
+    {
+        if (_meta?.Parent is { } parent && _record?[parent.Field] is { } parentId)
+        {
+            Nav.NavigateTo($"/r/{parent.Resource}/{parentId}");
+            return;
+        }
+        Nav.NavigateTo($"/r/{Resource}");
+    }
+}

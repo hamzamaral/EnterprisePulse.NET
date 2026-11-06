@@ -1,0 +1,74 @@
+@inherits AppPage
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <MudText Typo="Typo.subtitle1" Class="flex-grow-1">@L("files")</MudText>
+    @if (Session.Has("files:create"))
+    {
+        <MudFileUpload T="IBrowserFile" FilesChanged="Upload" MaxFileSize="20 * 1024 * 1024">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.CloudUpload" Disabled="_busy">@L("upload")</MudButton>
+            </ActivatorContent>
+        </MudFileUpload>
+    }
+</MudStack>
+@if (_busy)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-2" />
+}
+<MudSimpleTable Dense="true" Outlined="true">
+    <tbody>
+        @foreach (var f in _files)
+        {
+            <tr>
+                <td><MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" /></td>
+                <td><MudLink OnClick="() => Download(f)">@f["originalName"]</MudLink></td>
+                <td>@FormatSize(f["size"]!.GetValue<long>())</td>
+                <td>@Fmt.DateTime(f["createdAt"]!.GetValue<DateTime>())</td>
+                <td style="width:40px"><MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => Delete(f)" /></td>
+            </tr>
+        }
+        @if (_files.Count == 0)
+        {
+            <tr><td colspan="5"><MudText Typo="Typo.body2" Color="Color.Secondary">@L("noRecords")</MudText></td></tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    [Parameter, EditorRequired] public string EntityType { get; set; } = "";
+    [Parameter, EditorRequired] public string EntityId { get; set; } = "";
+
+    private List<JsonObject> _files = [];
+    private bool _busy;
+
+    protected override Task OnParametersSetAsync() => Load();
+
+    private async Task Load() =>
+        await Run(async () => _files = (await Api.GetAsync<JsonArray>($"/api/files?entityType={EntityType}&entityId={EntityId}")).Select(n => n!.AsObject()).ToList());
+
+    private async Task Upload(IBrowserFile? file)
+    {
+        if (file == null) return;
+        _busy = true;
+        await Run(async () =>
+        {
+            await using var stream = file.OpenReadStream(20 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            buffer.Position = 0;
+            await Api.UploadAsync("/api/files", buffer, file.Name, file.ContentType, new() { ["entityType"] = EntityType, ["entityId"] = EntityId });
+            await Load();
+        }, L("saved"));
+        _busy = false;
+    }
+
+    private Task Download(JsonObject f) => Run(() => Api.DownloadAsync($"/api/files/{f["id"]}/download", f["originalName"]!.ToString()));
+
+    private async Task Delete(JsonObject f)
+    {
+        if (!await Confirm(L("confirmDelete"))) return;
+        if (await Run(() => Api.DeleteAsync($"/api/files/{f["id"]}"), L("deleted"))) await Load();
+    }
+
+    private static string FormatSize(long bytes) => bytes < 1024 ? $"{bytes} B" : bytes < 1024 * 1024 ? $"{bytes / 1024.0:N1} KB" : $"{bytes / 1024.0 / 1024.0:N1} MB";
+}

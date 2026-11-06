@@ -1,0 +1,79 @@
+@page "/login"
+@inherits AppPage
+
+<MudPaper Elevation="8" Class="pa-8" Style="width:420px;max-width:94vw">
+    <MudStack Spacing="1" AlignItems="AlignItems.Center" Class="mb-6">
+        <MudIcon Icon="@Icons.Material.Filled.Insights" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5"><b>EnterprisePulse</b></MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@T("Kurumsal kaynak planlama", "Enterprise resource planning") · .NET</MudText>
+    </MudStack>
+    <EditForm Model="this" OnValidSubmit="Submit">
+        <MudStack Spacing="3">
+            <MudTextField @bind-Value="_email" Label="@L("email")" Variant="Variant.Outlined" InputType="InputType.Email" Required="true" autocomplete="username" />
+            <MudTextField @bind-Value="_password" Label="@L("password")" Variant="Variant.Outlined" InputType="InputType.Password" Required="true" autocomplete="current-password" />
+            @if (_needsCode)
+            {
+                <MudTextField @bind-Value="_code" Label="@L("code2fa")" Variant="Variant.Outlined" MaxLength="6" HelperText="@T("Kimlik doğrulayıcı uygulamadaki 6 haneli kod", "6-digit code from your authenticator app")" />
+            }
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="_busy" FullWidth="true">
+                @if (_busy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                @L("login")
+            </MudButton>
+            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                <MudLink Href="/forgot-password" Typo="Typo.body2">@L("forgot")</MudLink>
+                <MudLink OnClick="ToggleLocale" Typo="Typo.body2">@(Locale == "tr" ? "English" : "Türkçe")</MudLink>
+            </MudStack>
+        </MudStack>
+    </EditForm>
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary">@L("demoAccounts")</MudText>
+    <MudStack Row="true" Spacing="1" Class="mt-1" Wrap="Wrap.Wrap">
+        <MudChip T="string" Size="Size.Small" OnClick="@(() => Fill("admin@enterprisepulse.dev", "Admin123!"))">Admin</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="@(() => Fill("manager@enterprisepulse.dev", "Manager123!"))">@T("Müdür", "Manager")</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="@(() => Fill("employee@enterprisepulse.dev", "Employee123!"))">@T("Personel", "Employee")</MudChip>
+    </MudStack>
+</MudPaper>
+
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+    private string _email = "";
+    private string _password = "";
+    private string? _code;
+    private bool _needsCode;
+    private bool _busy;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.InitializeAsync(Api);
+        if (Session.IsAuthenticated) Nav.NavigateTo(SafeReturn, replace: true);
+        StateHasChanged();
+    }
+
+    private string SafeReturn => ReturnUrl is { } r && r.StartsWith('/') && !r.StartsWith("//") && !r.StartsWith("/login") ? r : "/";
+
+    private void Fill(string email, string password)
+    {
+        _email = email;
+        _password = password;
+    }
+
+    private Task ToggleLocale() => Session.SetLocaleAsync(Locale == "tr" ? "en" : "tr");
+
+    private async Task Submit()
+    {
+        _busy = true;
+        await Run(async () =>
+        {
+            var res = await Api.PostAsync<LoginResponse>("/api/auth/login", new { email = _email, password = _password, code = _code });
+            if (res.RequiresTwoFactor)
+            {
+                _needsCode = true;
+                return;
+            }
+            await Session.SignInAsync(Api, res.AccessToken!, res.RefreshToken!);
+            Nav.NavigateTo(SafeReturn, replace: true);
+        });
+        _busy = false;
+    }
+}

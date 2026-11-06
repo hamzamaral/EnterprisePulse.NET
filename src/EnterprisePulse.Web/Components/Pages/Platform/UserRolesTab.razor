@@ -1,0 +1,53 @@
+@inherits AppPage
+
+<MudText Typo="Typo.body2" Class="mb-3">@T("Bu şirketteki rolleri ve varsayılan şube", "Roles and default branch in this company")</MudText>
+<MudStack Spacing="2" Style="max-width:560px">
+    <MudSelect T="string" Label="@L("roles")" MultiSelection="true" @bind-SelectedValues="_roleIds" Variant="Variant.Outlined" Margin="Margin.Dense"
+               ToStringFunc="@(id => _roles.FirstOrDefault(r => r.Id == id)?.Label ?? id)">
+        @foreach (var r in _roles)
+        {
+            <MudSelectItem T="string" Value="r.Id">@r.Label</MudSelectItem>
+        }
+    </MudSelect>
+    <MudSelect T="string" Label="@L("branch")" @bind-Value="_branchId" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+        @foreach (var b in Session.Company?.Branches ?? [])
+        {
+            <MudSelectItem T="string" Value="b.Id.ToString()">@b.Name</MudSelectItem>
+        }
+    </MudSelect>
+    <MudStack Row="true">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">@L("save")</MudButton>
+        @if (Session.Has("users:delete"))
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="Remove">@T("Şirketten çıkar", "Remove from company")</MudButton>
+        }
+    </MudStack>
+</MudStack>
+
+@code {
+    [Parameter] public JsonObject Record { get; set; } = null!;
+    [Parameter] public ResourceMeta ResourceMeta { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<LookupItem> _roles = [];
+    private IEnumerable<string> _roleIds = [];
+    private string? _branchId;
+    private string UserId => Record["id"]!.ToString();
+
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        _roles = await Api.GetAsync<List<LookupItem>>("/api/r/roles/lookup?take=100");
+        _roleIds = (await Api.GetAsync<List<Guid>>($"/api/users/{UserId}/roles")).Select(g => g.ToString()).ToList();
+        var memberships = await Api.GetJsonAsync($"/api/r/user-companies?userId={UserId}&companyId={Session.CompanyId}");
+        _branchId = memberships["data"]!.AsArray().FirstOrDefault()?["defaultBranchId"]?.ToString();
+    });
+
+    private Task Save() => Run(() => Api.PutAsync<object>($"/api/users/{UserId}/roles",
+        new { roleIds = _roleIds.Select(Guid.Parse).ToList(), branchId = _branchId == null ? (Guid?)null : Guid.Parse(_branchId) }), L("saved"));
+
+    private async Task Remove()
+    {
+        if (!await Confirm(T("Kullanıcı bu şirketten çıkarılsın mı?", "Remove the user from this company?"))) return;
+        if (await Run(() => Api.DeleteAsync($"/api/users/{UserId}/membership"), L("saved"))) Nav.NavigateTo("/r/users");
+    }
+}

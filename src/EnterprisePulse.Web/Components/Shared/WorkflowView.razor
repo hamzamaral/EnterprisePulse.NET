@@ -1,0 +1,85 @@
+@inherits AppPage
+
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudStack Spacing="1">
+            <MudText Typo="Typo.subtitle1"><b>@Instance["title"]</b></MudText>
+            <MudText Typo="Typo.body2">@Instance["definitionName"]</MudText>
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("WorkflowStatus", Status, Locale)</MudChip>
+                <MudText Typo="Typo.caption">@L("startedBy"): @Instance["startedByName"] · @Fmt.DateTime(Instance["startedAt"]?.GetValue<DateTime>())</MudText>
+            </MudStack>
+            @if (Instance["canAct"]?.GetValue<bool>() == true)
+            {
+                <MudStack Row="true" Class="mt-3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check" OnClick="Approve">@L("approve")</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Close" OnClick="Reject">@L("reject")</MudButton>
+                </MudStack>
+            }
+            @if (Status == "PENDING" && Instance["startedById"]?.ToString() == Session.Me?.User.Id.ToString())
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Undo" OnClick="Cancel" Class="mt-1" Style="width:fit-content">@L("withdraw")</MudButton>
+            }
+        </MudStack>
+        <MudTimeline TimelinePosition="TimelinePosition.Start" Class="mt-4" Modifiers="false">
+            @foreach (var step in Instance["steps"]?.AsArray() ?? [])
+            {
+                var order = step!["order"]!.GetValue<int>();
+                var current = Instance["currentStepOrder"]!.GetValue<int>();
+                var color = Status == "APPROVED" || order < current ? Color.Success : order == current && Status == "PENDING" ? Color.Warning : order == current && Status == "REJECTED" ? Color.Error : Color.Default;
+                <MudTimelineItem Color="color" Size="Size.Small">
+                    <MudText Typo="Typo.body2"><b>@L("step") @order:</b> @step["name"]</MudText>
+                    <MudText Typo="Typo.caption">@step["approverName"]</MudText>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+    </MudItem>
+    <MudItem xs="12" md="7">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">@L("history")</MudText>
+        <MudSimpleTable Dense="true" Outlined="true">
+            <tbody>
+                @foreach (var a in Instance["actions"]?.AsArray() ?? [])
+                {
+                    var type = a!["type"]!.ToString();
+                    <tr>
+                        <td style="white-space:nowrap">@Fmt.DateTime(a["createdAt"]!.GetValue<DateTime>())</td>
+                        <td><MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="ActionColor(type)">@Meta.EnumLabel("WorkflowActionType", type, Locale)</MudChip></td>
+                        <td>@a["userName"]</td>
+                        <td>@a["comment"]</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired] public JsonObject Instance { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string Status => Instance["status"]?.ToString() ?? "";
+    private string Id => Instance["id"]!.ToString();
+
+    private static Color ActionColor(string type) => type switch { "APPROVE" => Color.Success, "REJECT" => Color.Error, "CANCEL" => Color.Warning, _ => Color.Info };
+
+    private async Task Approve()
+    {
+        var comment = await PromptDialog.AskAsync(Dialogs, L("approve"), L("comment"), okText: L("approve"), color: Color.Success);
+        if (comment == null) return;
+        if (await Run(() => Api.PostAsync($"/api/workflow/instances/{Id}/approve", new { comment }), T("Onaylandı", "Approved"))) await OnChanged.InvokeAsync();
+    }
+
+    private async Task Reject()
+    {
+        var comment = await PromptDialog.AskAsync(Dialogs, L("reject"), L("rejectReason"), required: true, okText: L("reject"), color: Color.Error);
+        if (comment == null) return;
+        if (await Run(() => Api.PostAsync($"/api/workflow/instances/{Id}/reject", new { comment }), T("Reddedildi", "Rejected"))) await OnChanged.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        var comment = await PromptDialog.AskAsync(Dialogs, L("withdraw"), L("comment"), okText: L("withdraw"), color: Color.Warning);
+        if (comment == null) return;
+        if (await Run(() => Api.PostAsync($"/api/workflow/instances/{Id}/cancel", new { comment }), L("saved"))) await OnChanged.InvokeAsync();
+    }
+}

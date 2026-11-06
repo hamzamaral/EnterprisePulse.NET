@@ -1,0 +1,46 @@
+name: enterprise-pulse-net
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: epnet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp
+      POSTGRES_DB: enterprise_pulse
+    ports:
+      - "5442:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  storage:
+    image: rustfs/rustfs:latest
+    container_name: epnet-storage
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: erpadmin
+      RUSTFS_SECRET_KEY: erpadmin123
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    volumes:
+      - storage-data:/data
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: epnet-mailpit
+    restart: unless-stopped
+    ports:
+      - "1035:1025"
+      - "8035:8025"
+
+volumes:
+  postgres-data:
+  storage-data:

@@ -1,0 +1,62 @@
+@inherits AppPage
+
+<MudNavMenu Class="py-2 ep-nav-group" Dense="true">
+    @foreach (var (group, index) in Groups.Select((g, i) => (g, i)))
+    {
+        var items = group.Items.Where(Visible).ToList();
+        if (items.Count == 0) continue;
+        if (index == 0)
+        {
+            @foreach (var item in items)
+            {
+                <MudNavLink Href="@item.Href" Match="@(item.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)" Icon="@(item.Href == "/" ? Icons.Material.Filled.Dashboard : Icons.Material.Filled.TaskAlt)">@T(item.Label)</MudNavLink>
+            }
+            continue;
+        }
+        <MudNavGroup Title="@T(group.Label)" Icon="@GroupIcon(group.Label.Tr)" Expanded="@items.Any(IsCurrent)">
+            @foreach (var item in items)
+            {
+                <MudNavLink Href="@item.Href" Match="NavLinkMatch.All">@T(item.Label)</MudNavLink>
+            }
+        </MudNavGroup>
+    }
+</MudNavMenu>
+
+@code {
+    private IEnumerable<NavGroupMeta> Groups => Meta.Navigation.Where(Features.Enabled);
+
+    private bool Visible(NavItemMeta item) => Features.Enabled(item) && Session.HasAny(item.Permission);
+
+    private bool IsCurrent(NavItemMeta item) => ("/" + Nav.ToBaseRelativePath(Nav.Uri)).StartsWith(item.Href.Split('?')[0]);
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += () => InvokeAsync(StateHasChanged);
+    }
+
+    private static string GroupIcon(string label) => label switch
+    {
+        "İnsan Kaynakları" => Icons.Material.Filled.Badge,
+        "Masraf ve Harcırah" => Icons.Material.Filled.ReceiptLong,
+        "Bordro" => Icons.Material.Filled.Payments,
+        "İşe Alım" => Icons.Material.Filled.PersonSearch,
+        "Performans ve Eğitim" => Icons.Material.Filled.School,
+        "Destek" => Icons.Material.Filled.SupportAgent,
+        "Proje Yönetimi" => Icons.Material.Filled.ViewKanban,
+        "Zimmet ve Demirbaş" => Icons.Material.Filled.Inventory2,
+        "Stok ve Depo" => Icons.Material.Filled.Warehouse,
+        "Üretim" => Icons.Material.Filled.PrecisionManufacturing,
+        "Satın Alma" => Icons.Material.Filled.ShoppingCart,
+        "CRM" => Icons.Material.Filled.Handshake,
+        "Satış" => Icons.Material.Filled.PointOfSale,
+        "Cari ve Finans" => Icons.Material.Filled.AccountBalance,
+        "Muhasebe" => Icons.Material.Filled.Calculate,
+        "Sözleşmeler" => Icons.Material.Filled.Gavel,
+        "Bütçe" => Icons.Material.Filled.PieChart,
+        "Araç ve Filo" => Icons.Material.Filled.DirectionsCar,
+        "Raporlar" => Icons.Material.Filled.BarChart,
+        "Onay Süreçleri" => Icons.Material.Filled.AccountTree,
+        "Organizasyon" => Icons.Material.Filled.CorporateFare,
+        _ => Icons.Material.Filled.Settings,
+    };
+}

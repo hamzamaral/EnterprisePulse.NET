@@ -1,0 +1,82 @@
+@page "/notifications"
+@inherits AppPage
+
+<PageTitle>@L("notifications") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@L("notifications")</MudText>
+    <MudSwitch T="bool" Value="_unread" ValueChanged="SetUnread" Label="@T("Yalnızca okunmamış", "Unread only")" Color="Color.Primary" />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.DoneAll" OnClick="ReadAll">@L("markAllRead")</MudButton>
+    @if (Session.Has("notifications:send"))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Campaign" OnClick="Announce">@T("Duyuru gönder", "Send announcement")</MudButton>
+    }
+</div>
+
+<MudPaper Elevation="1">
+    <MudList T="string" Dense="false">
+        @foreach (var n in _rows)
+        {
+            var unread = n["readAt"] == null;
+            <MudListItem T="string" OnClick="() => Open(n)" Icon="@(unread ? Icons.Material.Filled.Circle : Icons.Material.Outlined.Circle)" IconColor="@(unread ? Color.Primary : Color.Default)" IconSize="Size.Small">
+                <MudText Typo="Typo.body1" Style="@(unread ? "font-weight:600" : "")">@n["title"]</MudText>
+                <MudText Typo="Typo.body2">@n["body"]</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@Fmt.DateTime(n["createdAt"]!.GetValue<DateTime>())</MudText>
+            </MudListItem>
+            <MudDivider />
+        }
+        @if (_rows.Count == 0)
+        {
+            <MudText Class="pa-4" Color="Color.Secondary">@L("noRecords")</MudText>
+        }
+    </MudList>
+</MudPaper>
+@if (_pages > 1)
+{
+    <MudPagination Count="_pages" Selected="_page" SelectedChanged="Page" Class="mt-3" />
+}
+
+@code {
+    private List<JsonObject> _rows = [];
+    private bool _unread;
+    private int _page = 1, _pages = 1;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load() => await Run(async () =>
+    {
+        var res = await Api.GetJsonAsync($"/api/notifications?page={_page}&pageSize=20&unread={_unread.ToString().ToLowerInvariant()}");
+        _rows = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
+        _pages = Math.Max(1, res["meta"]!["totalPages"]!.GetValue<int>());
+    });
+
+    private Task SetUnread(bool v)
+    {
+        _unread = v;
+        _page = 1;
+        return Load();
+    }
+
+    private Task Page(int p)
+    {
+        _page = p;
+        return Load();
+    }
+
+    private async Task Open(JsonObject n)
+    {
+        await Run(() => Api.PostAsync($"/api/notifications/{n["id"]}/read"));
+        if (n["link"]?.ToString() is { Length: > 0 } link) Nav.NavigateTo(link);
+        else await Load();
+    }
+
+    private async Task ReadAll()
+    {
+        if (await Run(() => Api.PostAsync("/api/notifications/read-all"))) await Load();
+    }
+
+    private async Task Announce()
+    {
+        var dialog = await Dialogs.ShowAsync<AnnouncementDialog>(T("Duyuru gönder", "Send announcement"));
+        await dialog.Result;
+    }
+}

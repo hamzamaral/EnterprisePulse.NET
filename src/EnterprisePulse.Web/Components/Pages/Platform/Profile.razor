@@ -1,0 +1,123 @@
+@page "/profile"
+@inherits AppPage
+
+<PageTitle>@L("profile") · EnterprisePulse</PageTitle>
+<MudText Typo="Typo.h5" Class="mb-4">@L("profile")</MudText>
+@if (Session.Me is { } me)
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-3"><b>@T("Kişisel bilgiler", "Personal details")</b></MudText>
+                <MudStack Spacing="2">
+                    <MudTextField @bind-Value="_first" Label="@T("Ad", "First name")" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudTextField @bind-Value="_last" Label="@T("Soyad", "Last name")" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudTextField @bind-Value="_phone" Label="@T("Telefon", "Phone")" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudTextField Value="me.User.Email" Label="@L("email")" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="true" />
+                    <MudSelect @bind-Value="_locale" Label="@L("language")" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem Value="@("tr")">Türkçe</MudSelectItem>
+                        <MudSelectItem Value="@("en")">English</MudSelectItem>
+                    </MudSelect>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProfile" Style="width:fit-content">@L("save")</MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 mb-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-3"><b>@T("Şifre değiştir", "Change password")</b></MudText>
+                <MudStack Spacing="2">
+                    <MudTextField @bind-Value="_current" Label="@L("currentPassword")" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudTextField @bind-Value="_next" Label="@L("newPassword")" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  HelperText="@T("En az 8 karakter, büyük/küçük harf ve rakam", "At least 8 chars with upper, lower case and a digit")" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ChangePassword" Disabled="_current.Length == 0 || _next.Length < 8" Style="width:fit-content">@L("save")</MudButton>
+                </MudStack>
+            </MudPaper>
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1" Class="flex-grow-1"><b>@L("twoFactor")</b></MudText>
+                    <MudChip T="string" Size="Size.Small" Color="@(me.User.TwoFactorEnabled ? Color.Success : Color.Default)">@(me.User.TwoFactorEnabled ? T("Açık", "On") : T("Kapalı", "Off"))</MudChip>
+                </MudStack>
+                @if (me.User.TwoFactorEnabled)
+                {
+                    <MudStack Spacing="2" Class="mt-2">
+                        <MudTextField @bind-Value="_disablePassword" Label="@L("password")" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Disable2fa" Style="width:fit-content">@L("disable")</MudButton>
+                    </MudStack>
+                }
+                else if (_qr == null)
+                {
+                    <MudText Typo="Typo.body2" Class="my-2">@T("Google Authenticator, Microsoft Authenticator vb. bir uygulama ile hesabınızı koruyun.", "Protect your account with an authenticator app.")</MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="Setup2fa">@T("Kurulumu başlat", "Start setup")</MudButton>
+                }
+                else
+                {
+                    <MudStack Spacing="2" Class="mt-2" AlignItems="AlignItems.Start">
+                        <img src="@_qr" alt="QR" width="180" height="180" />
+                        <MudText Typo="Typo.caption" Class="ep-mono">@_secret</MudText>
+                        <MudTextField @bind-Value="_code" Label="@L("code2fa")" Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="6" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Enable2fa" Disabled="_code.Length != 6">@L("enable")</MudButton>
+                    </MudStack>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private string _first = "", _last = "", _locale = "tr", _current = "", _next = "", _code = "", _disablePassword = "";
+    private string? _phone, _qr, _secret;
+
+    protected override void OnInitialized()
+    {
+        var u = Session.Me!.User;
+        (_first, _last, _phone, _locale) = (u.FirstName, u.LastName, u.Phone, u.Locale);
+    }
+
+    private async Task SaveProfile()
+    {
+        if (await Run(() => Api.PatchAsync<object>("/api/auth/profile", new { firstName = _first, lastName = _last, phone = _phone, locale = _locale }), L("saved")))
+        {
+            await Session.SetLocaleAsync(_locale);
+            await Session.LoadMeAsync(Api);
+        }
+    }
+
+    private async Task ChangePassword()
+    {
+        if (await Run(() => Api.PostAsync("/api/auth/change-password", new { currentPassword = _current, newPassword = _next }), L("saved")))
+        {
+            _current = _next = "";
+        }
+    }
+
+    private async Task Setup2fa()
+    {
+        await Run(async () =>
+        {
+            var res = await Api.PostAsync<JsonObject>("/api/auth/2fa/setup");
+            _secret = res["secret"]!.ToString();
+            using var generator = new QRCoder.QRCodeGenerator();
+            using var data = generator.CreateQrCode(res["otpAuthUri"]!.ToString(), QRCoder.QRCodeGenerator.ECCLevel.M);
+            var png = new QRCoder.PngByteQRCode(data).GetGraphic(6);
+            _qr = "data:image/png;base64," + Convert.ToBase64String(png);
+        });
+    }
+
+    private async Task Enable2fa()
+    {
+        if (await Run(() => Api.PostAsync("/api/auth/2fa/enable", new { code = _code }), T("İki adımlı doğrulama açıldı", "Two-factor enabled")))
+        {
+            _qr = null;
+            await Session.LoadMeAsync(Api);
+        }
+    }
+
+    private async Task Disable2fa()
+    {
+        if (await Run(() => Api.PostAsync("/api/auth/2fa/disable", new { password = _disablePassword }), T("İki adımlı doğrulama kapatıldı", "Two-factor disabled")))
+        {
+            _disablePassword = "";
+            await Session.LoadMeAsync(Api);
+        }
+    }
+}

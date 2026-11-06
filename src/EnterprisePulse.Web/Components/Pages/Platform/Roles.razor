@@ -1,0 +1,160 @@
+@page "/roles"
+@inherits AppPage
+
+<PageTitle>@L("roles") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Roller ve İzinler", "Roles & permissions")</MudText>
+    @if (Session.Has("roles:create"))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">@L("new")</MudButton>
+    }
+</div>
+
+<MudGrid>
+    <MudItem xs="12" md="3">
+        <MudPaper Elevation="1">
+            <MudList T="string" Dense="true" SelectedValue="_selected?.Code" >
+                @foreach (var role in _roles)
+                {
+                    <MudListItem T="string" Value="@role.Code" OnClick="() => Select(role)" Icon="@(role.IsSystem ? Icons.Material.Filled.Lock : Icons.Material.Filled.Shield)">
+                        <MudText Typo="Typo.body2"><b>@role.Name</b></MudText>
+                        <MudText Typo="Typo.caption">@role.Code · @role.UserCount @T("kullanıcı", "users") · @role.Permissions.Count @T("izin", "perms")</MudText>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="9">
+        @if (_selected != null)
+        {
+            <MudPaper Elevation="1" Class="pa-4">
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_selected.Code" Label="@T("Kod", "Code")" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="_selected.IsSystem || _selected.Id != null" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_selected.Name" Label="@T("Ad", "Name")" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="_selected.IsSystem" /></MudItem>
+                    <MudItem xs="12" sm="5"><MudTextField @bind-Value="_selected.Description" Label="@T("Açıklama", "Description")" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="_selected.IsSystem" /></MudItem>
+                </MudGrid>
+                @if (_selected.IsSystem)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="my-2">@T("Sistem rolü tüm izinlere sahiptir ve değiştirilemez.", "The system role holds every permission and cannot be changed.")</MudAlert>
+                }
+                <MudSimpleTable Dense="true" Hover="true" Class="mt-3" Style="max-height:60vh;overflow:auto">
+                    <thead>
+                        <tr>
+                            <th>@T("Modül", "Module")</th>
+                            <th>@L("permissions")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var module in Meta.Permissions)
+                        {
+                            <tr>
+                                <td style="width:220px">
+                                    <MudCheckBox T="bool?" Value="ModuleState(module)" ValueChanged="v => ToggleModule(module, v == true)" TriState="true" Size="Size.Small" Disabled="ReadOnly" Label="@T(module.Label)" Dense="true" />
+                                </td>
+                                <td>
+                                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+                                        @foreach (var a in module.Actions)
+                                        {
+                                            <MudCheckBox T="bool" Value="_selected.Permissions.Contains(a.Code)" ValueChanged="v => Toggle(a.Code, v)" Label="@T(a.Label)" Size="Size.Small" Dense="true" Disabled="ReadOnly" />
+                                        }
+                                    </MudStack>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+                <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-3">
+                    @if (_selected.Id != null && !_selected.IsSystem && Session.Has("roles:delete"))
+                    {
+                        <MudButton Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="Delete">@L("delete")</MudButton>
+                    }
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="ReadOnly" StartIcon="@Icons.Material.Filled.Save">@L("save")</MudButton>
+                </MudStack>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private sealed class RoleModel
+    {
+        public Guid? Id { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public bool IsSystem { get; set; }
+        public HashSet<string> Permissions { get; set; } = [];
+        public int UserCount { get; set; }
+    }
+
+    private List<RoleModel> _roles = [];
+    private RoleModel? _selected;
+
+    private bool ReadOnly => _selected == null || _selected.IsSystem || !Session.Has(_selected.Id == null ? "roles:create" : "roles:update");
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load(string? select = null)
+    {
+        await Run(async () =>
+        {
+            var rows = await Api.GetAsync<List<JsonObject>>("/api/roles/details");
+            _roles = rows.Select(r => new RoleModel
+            {
+                Id = r["id"]!.GetValue<Guid>(),
+                Code = r["code"]!.ToString(),
+                Name = r["name"]!.ToString(),
+                Description = r["description"]?.ToString(),
+                IsSystem = r["isSystem"]!.GetValue<bool>(),
+                Permissions = r["permissions"]!.AsArray().Select(p => p!.ToString()).ToHashSet(),
+                UserCount = r["userCount"]!.GetValue<int>(),
+            }).ToList();
+        });
+        _selected = _roles.FirstOrDefault(r => r.Code == (select ?? _selected?.Code)) ?? _roles.FirstOrDefault();
+    }
+
+    private void Select(RoleModel role) => _selected = role;
+
+    private void New() => _selected = new RoleModel { Code = "", Name = "" };
+
+    private bool? ModuleState(PermissionModuleMeta m)
+    {
+        var count = m.Actions.Count(a => _selected!.Permissions.Contains(a.Code));
+        return count == 0 ? false : count == m.Actions.Count ? true : null;
+    }
+
+    private void ToggleModule(PermissionModuleMeta m, bool on)
+    {
+        foreach (var a in m.Actions)
+        {
+            if (on) _selected!.Permissions.Add(a.Code); else _selected!.Permissions.Remove(a.Code);
+        }
+    }
+
+    private void Toggle(string code, bool on)
+    {
+        if (on) _selected!.Permissions.Add(code); else _selected!.Permissions.Remove(code);
+    }
+
+    private async Task Save()
+    {
+        var role = _selected!;
+        var body = new { code = role.Code, name = role.Name, description = role.Description, permissions = role.Permissions.ToList() };
+        await Run(async () =>
+        {
+            if (role.Id == null) await Api.PostAsync<JsonObject>("/api/roles/details", body);
+            else await Api.PutAsync<JsonObject>($"/api/roles/details/{role.Id}", body);
+            await Load(role.Code);
+        }, L("saved"));
+    }
+
+    private async Task Delete()
+    {
+        if (!await Confirm(L("confirmDelete"))) return;
+        if (await Run(() => Api.DeleteAsync($"/api/roles/details/{_selected!.Id}"), L("deleted")))
+        {
+            _selected = null;
+            await Load();
+        }
+    }
+}

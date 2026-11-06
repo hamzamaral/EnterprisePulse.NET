@@ -1,0 +1,59 @@
+html, body {
+    font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.ep-page-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.ep-page-header .ep-grow {
+    flex: 1;
+}
+
+.ep-clickable tbody tr {
+    cursor: pointer;
+}
+
+.ep-auth-bg {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #312e81 0%, #4338ca 45%, #0ea5e9 100%);
+}
+
+.ep-nav-group .mud-nav-link-text {
+    font-size: 0.9rem;
+}
+
+.ep-mono {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 0.85rem;
+}
+
+.ep-json {
+    white-space: pre-wrap;
+    font-family: Consolas, monospace;
+    font-size: 0.8rem;
+    max-height: 240px;
+    overflow: auto;
+}
+
+@media print {
+    .mud-appbar, .mud-drawer, .ep-no-print {
+        display: none !important;
+    }
+
+    .mud-main-content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+
+#blazor-error-ui {
+    display: none;
+}

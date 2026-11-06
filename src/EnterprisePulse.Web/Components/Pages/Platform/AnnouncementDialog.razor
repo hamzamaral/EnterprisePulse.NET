@@ -1,0 +1,39 @@
+@inherits AppPage
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudSelect T="string" Label="@L("users")" MultiSelection="true" @bind-SelectedValues="_users" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       ToStringFunc="@(id => _options.FirstOrDefault(o => o.Id == id)?.Label ?? id)" SelectAll="true" SelectAllText="@L("all")">
+                @foreach (var o in _options)
+                {
+                    <MudSelectItem T="string" Value="o.Id">@o.Label</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_title" Label="@T("Başlık", "Title")" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudTextField @bind-Value="_body" Label="@T("Mesaj", "Message")" Variant="Variant.Outlined" Lines="4" />
+            <MudCheckBox @bind-Value="_email" Label="@T("E-posta olarak da gönder", "Also send as e-mail")" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Send" Disabled="!_users.Any() || string.IsNullOrWhiteSpace(_title)">@L("send")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    private List<LookupItem> _options = [];
+    private IEnumerable<string> _users = [];
+    private string _title = "", _body = "";
+    private bool _email;
+
+    protected override async Task OnInitializedAsync() =>
+        await Run(async () => _options = await Api.GetAsync<List<LookupItem>>("/api/r/users/lookup?take=200"));
+
+    private async Task Send()
+    {
+        if (await Run(() => Api.PostAsync("/api/notifications/send", new { userIds = _users.Select(Guid.Parse).ToList(), title = _title, body = _body, email = _email }), T("Gönderildi", "Sent")))
+            MudDialog.Close();
+    }
+}

@@ -1,0 +1,208 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject Session Session
+@inject ApiClient Api
+@inject MetaCache MetaCache
+@inject NavigationManager Nav
+@inject RealtimeClient Realtime
+@inject ISnackbar Snackbar
+
+<MudThemeProvider Theme="_theme" IsDarkMode="Session.DarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider CloseButton="true" MaxWidth="MaxWidth.Medium" FullWidth="true" />
+<MudSnackbarProvider />
+
+@if (IsPublicPage)
+{
+    <div class="ep-auth-bg">@Body</div>
+}
+else if (!_ready)
+{
+    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="height:100vh">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+    </MudStack>
+}
+else
+{
+    <CascadingValue Value="_meta" IsFixed="true">
+        <MudLayout>
+            <MudAppBar Elevation="1" Dense="true" Color="Color.Primary">
+                <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="() => _drawer = !_drawer" />
+                <MudText Typo="Typo.h6" Class="ml-2 d-none d-sm-flex">EnterprisePulse</MudText>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Inherit" Class="ml-2 d-none d-md-flex">.NET</MudChip>
+                <MudSpacer />
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+                    <ActivatorContent>
+                        <MudButton Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Business" EndIcon="@Icons.Material.Filled.ArrowDropDown" Class="text-none">
+                            @Session.Company?.Name @(BranchName is { } b ? $"· {b}" : "")
+                        </MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        @foreach (var c in Session.Me!.Companies)
+                        {
+                            <MudMenuItem OnClick="() => SwitchCompany(c.Id, null)" Icon="@(c.Id == Session.CompanyId ? Icons.Material.Filled.Check : null)">@c.Name</MudMenuItem>
+                            @if (c.Id == Session.CompanyId)
+                            {
+                                @foreach (var br in c.Branches)
+                                {
+                                    <MudMenuItem OnClick="() => SwitchCompany(c.Id, br.Id)" Class="pl-10">
+                                        <MudText Typo="Typo.body2" Color="@(br.Id == Session.BranchId ? Color.Primary : Color.Default)">↳ @br.Name</MudText>
+                                    </MudMenuItem>
+                                }
+                            }
+                        }
+                    </ChildContent>
+                </MudMenu>
+                <MudTooltip Text="@Texts.Get("language", Session.Locale)">
+                    <MudButton Color="Color.Inherit" OnClick="ToggleLocale" Class="px-1" Style="min-width:40px">@Session.Locale.ToUpperInvariant()</MudButton>
+                </MudTooltip>
+                <MudIconButton Icon="@(Session.DarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit" OnClick="() => Session.SetDarkAsync(!Session.DarkMode)" />
+                <MudBadge Content="_unread" Visible="_unread > 0" Color="Color.Error" Overlap="true" Class="mx-1">
+                    <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" Href="/notifications" />
+                </MudBadge>
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <ActivatorContent>
+                        <MudAvatar Size="Size.Small" Color="Color.Secondary" Class="ml-2" Style="cursor:pointer">@Initials</MudAvatar>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudText Typo="Typo.subtitle2" Class="px-4 pt-2">@Session.Me!.User.FullName</MudText>
+                        <MudText Typo="Typo.caption" Class="px-4 pb-2">@Session.Me!.User.Email</MudText>
+                        <MudDivider />
+                        <MudMenuItem Href="/profile" Icon="@Icons.Material.Filled.Person">@Texts.Get("profile", Session.Locale)</MudMenuItem>
+                        <MudMenuItem OnClick="SignOut" Icon="@Icons.Material.Filled.Logout">@Texts.Get("logout", Session.Locale)</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </MudAppBar>
+            <MudDrawer @bind-Open="_drawer" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Responsive" Width="270px">
+                <NavMenu />
+            </MudDrawer>
+            <MudMainContent>
+                <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="py-4">
+                    @Body
+                </MudContainer>
+            </MudMainContent>
+        </MudLayout>
+    </CascadingValue>
+}
+
+@code {
+    private static readonly string[] PublicPages = ["login", "forgot-password", "reset-password"];
+    private bool _ready;
+    private bool _drawer = true;
+    private int _unread;
+    private MetadataDocument _meta = null!;
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight { Primary = "#4338ca", Secondary = "#0ea5e9", AppbarBackground = "#312e81", Background = "#f5f6fb" },
+        PaletteDark = new PaletteDark { Primary = "#818cf8", Secondary = "#38bdf8", AppbarBackground = "#1e1b4b" },
+        Typography = new Typography { Default = new DefaultTypography { FontFamily = ["Inter", "Segoe UI", "sans-serif"] } },
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "8px" },
+    };
+
+    private bool IsPublicPage => PublicPages.Contains(Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/'));
+
+    private string Initials => Session.Me is { } me ? $"{me.User.FirstName.FirstOrDefault()}{me.User.LastName.FirstOrDefault()}" : "";
+
+    private string? BranchName => Session.Company?.Branches.FirstOrDefault(b => b.Id == Session.BranchId)?.Name;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnChanged;
+        Nav.LocationChanged += OnLocation;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.InitializeAsync(Api);
+        await EnsureReadyAsync();
+    }
+
+    private async Task EnsureReadyAsync()
+    {
+        if (IsPublicPage || _ready) return;
+        if (!Session.IsAuthenticated)
+        {
+            var back = Nav.ToBaseRelativePath(Nav.Uri);
+            Nav.NavigateTo(back.Length > 0 ? $"/login?returnUrl={Uri.EscapeDataString("/" + back)}" : "/login", replace: true);
+            return;
+        }
+        try
+        {
+            _meta = await MetaCache.LoadAsync(Api);
+            _ready = true;
+            await RefreshUnreadAsync();
+            Realtime.Notified += OnNotification;
+            await Realtime.StartAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        StateHasChanged();
+    }
+
+    private async Task RefreshUnreadAsync()
+    {
+        try
+        {
+            var r = await Api.GetJsonAsync("/api/notifications/unread-count");
+            _unread = r["count"]!.GetValue<int>();
+        }
+        catch (ApiException) { }
+    }
+
+    private async Task OnNotification(JsonObject n)
+    {
+        await InvokeAsync(() =>
+        {
+            _unread++;
+            Snackbar.Add(n["title"]?.ToString() ?? "", Severity.Info, o =>
+            {
+                var link = n["link"]?.ToString();
+                if (link != null) o.OnClick = _ => { Nav.NavigateTo(link); return Task.CompletedTask; };
+            });
+            StateHasChanged();
+        });
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnLocation(object? sender, LocationChangedEventArgs e) => InvokeAsync(async () =>
+    {
+        if (!_ready) await EnsureReadyAsync();
+        else await RefreshUnreadAsync();
+        StateHasChanged();
+    });
+
+    private async Task SwitchCompany(Guid companyId, Guid? branchId)
+    {
+        try
+        {
+            await Session.SwitchCompanyAsync(Api, companyId, branchId);
+            Nav.NavigateTo("/", forceLoad: false);
+            await RefreshUnreadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private Task ToggleLocale() => Session.SetLocaleAsync(Session.Locale == "tr" ? "en" : "tr");
+
+    private async Task SignOut()
+    {
+        await Session.SignOutAsync();
+        _ready = false;
+        Nav.NavigateTo("/login", replace: true);
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnChanged;
+        Nav.LocationChanged -= OnLocation;
+        Realtime.Notified -= OnNotification;
+    }
+}
