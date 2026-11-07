@@ -139,6 +139,15 @@ EnterprisePulse.sln
 node tools/codegen/emit-csharp.mjs
 ```
 
+## Belgeler (PDF benzeri kılavuzlar)
+
+Yazıcıdan veya tarayıcıda **PDF olarak yazdır** ile PDF üretebilirsiniz.
+
+| Belge | İçerik |
+| --- | --- |
+| [Kullanıcı / ekran kılavuzu](docs/kullanici-kilavuzu.md) ([HTML → PDF](docs/kullanici-kilavuzu.html)) | Tüm menü sayfaları modül gruplarıyla (ör. 2. İK → 2.1 İzinlerim), ne işe yarar, nasıl kullanılır |
+| [Teknik kılavuz](docs/teknik-kilavuz.md) ([HTML → PDF](docs/teknik-kilavuz.html)) | Backend/frontend stack, çözüm yapısı, platform kalıpları, her modülün servis / API / Blazor / seed / iş kuralları |
+
 ## Kardeş projeler
 
 Aynı domain modeli üç stack’te:
