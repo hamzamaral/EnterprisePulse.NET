@@ -1,0 +1,27 @@
+@page "/training/my"
+@inherits AppPage
+
+<PageTitle>@T("Eğitimlerim", "My trainings") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Eğitimlerim", "My trainings")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_rows.Count == 0) { <MudText>@T("Kayıtlı eğitiminiz yok.", "You have no enrollments.")</MudText> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Eğitim", "Course")</MudTh><MudTh>@T("Durum", "Status")</MudTh><MudTh>@T("Puan", "Score")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["courseTitle"]</MudTd>
+            <MudTd>@Meta.EnumLabel("TrainingEnrollmentStatus", context["status"]?.ToString() ?? "", Locale)</MudTd>
+            <MudTd>@(context["score"]?.ToString() ?? "—")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/training/mine");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}

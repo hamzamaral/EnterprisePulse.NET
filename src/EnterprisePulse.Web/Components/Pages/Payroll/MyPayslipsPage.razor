@@ -1,0 +1,27 @@
+@page "/payroll/my"
+@inherits AppPage
+
+<PageTitle>@T("Bordrolarım", "My payslips") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Bordrolarım", "My payslips")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_rows.Count == 0) { <MudText>@T("Onaylı bordronuz yok.", "You have no approved payslips.")</MudText> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Dönem", "Period")</MudTh><MudTh Style="text-align:right">@T("Brüt", "Gross")</MudTh><MudTh Style="text-align:right">@T("Net", "Net")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd><MudLink Href="@($"/payroll/periods/{context["periodId"]}")">@context["number"]</MudLink></MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["grossPay"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["netPay"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/payroll/mine");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}

@@ -1,0 +1,25 @@
+@page "/recruitment/applications/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["candidateName"]?.ToString() ?? T("Başvuru", "Application")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/job-applications" />
+    <MudText Typo="Typo.h5">@(_row?["candidateName"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small">@Meta.EnumLabel("ApplicationStage", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["postingTitle"]</MudText>
+    @if (_row["offerSalary"] != null)
+    {
+        <MudText Class="mt-2">@T("Teklif", "Offer") @Fmt.Money(AssetUi.Dec(_row["offerSalary"]), Session.Company?.BaseCurrency, Locale) · @_row["offerStatus"]</MudText>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["stage"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/recruitment/applications/{Id}"));
+}

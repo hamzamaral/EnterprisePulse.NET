@@ -90,6 +90,7 @@ public static partial class ResourceViews
         Inventory();
         Sales();
         Work();
+        People();
     }
 
     static void Assets()
@@ -449,6 +450,64 @@ public static partial class ResourceViews
             v.Columns = ["number", "name", "partnerId", "managerId", "status", "startDate", "dueDate", "budgetAmount", "expenseCost"];
             v.FilterFields = ["status", "managerId", "partnerId"];
             v.DetailHref = "/projects/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+    }
+
+    static void People()
+    {
+        Configure("payroll-periods", v =>
+        {
+            v.Columns = ["number", "year", "month", "status", "employeeCount", "grossTotal", "netTotal", "employerCostTotal"];
+            v.FilterFields = ["status", "year"];
+            v.DetailHref = "/payroll/periods/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("salary-records", v =>
+        {
+            v.Columns = ["employeeId", "effectiveFrom", "grossSalary", "note"];
+            v.FilterFields = ["employeeId"];
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("job-postings", v =>
+        {
+            v.Columns = ["number", "title", "status", "openings", "location", "salaryMin", "salaryMax"];
+            v.FilterFields = ["status"];
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("job-applications", v =>
+        {
+            v.Columns = ["postingId", "candidateId", "stage", "appliedAt", "hiredAt"];
+            v.FilterFields = ["stage", "postingId"];
+            v.DetailHref = "/recruitment/applications/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("candidates", v =>
+        {
+            v.Columns = ["firstName", "lastName", "email", "city", "source", "expectedSalary"];
+            v.FilterFields = ["source"];
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("review-cycles", v =>
+        {
+            v.Columns = ["name", "status", "periodStart", "periodEnd", "goalWeight"];
+            v.FilterFields = ["status"];
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("competencies", v =>
+        {
+            v.Columns = ["name", "sortOrder", "isActive"];
+            v.FilterFields = ["isActive"];
+        });
+        Configure("training-courses", v =>
+        {
+            v.Columns = ["code", "title", "category", "format", "durationHours", "isMandatory", "validityMonths", "isActive"];
+            v.FilterFields = ["category", "isMandatory", "isActive"];
+        });
+        Configure("training-sessions", v =>
+        {
+            v.Columns = ["courseId", "startsAt", "status", "location", "instructor", "capacity"];
+            v.FilterFields = ["status", "courseId"];
             v.HideCreate = v.HideEdit = v.HideDelete = true;
         });
     }

@@ -11,5 +11,7 @@ public static class ModuleEndpoints
         app.MapPurchasing();
         app.MapSales();
         app.MapWork();
+        app.MapPayroll();
+        app.MapPeople();
     }
 }

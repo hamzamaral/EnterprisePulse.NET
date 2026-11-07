@@ -1,0 +1,40 @@
+@page "/payroll/periods/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("Bordro", "Payroll")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/payroll-periods" />
+    <MudText Typo="Typo.h5">@(_row?["number"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small">@Meta.EnumLabel("PayrollPeriodStatus", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-3">
+        @_row["year"]-@(_row["month"]?.ToString()?.PadLeft(2, '0'))
+        · @T("Brüt", "Gross") @Fmt.Money(AssetUi.Dec(_row["grossTotal"]), Session.Company?.BaseCurrency, Locale)
+        · @T("Net", "Net") @Fmt.Money(AssetUi.Dec(_row["netTotal"]), Session.Company?.BaseCurrency, Locale)
+        · @T("İşveren", "Employer") @Fmt.Money(AssetUi.Dec(_row["employerCostTotal"]), Session.Company?.BaseCurrency, Locale)
+    </MudText>
+    <MudTable Items='@_row["payslips"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Personel", "Employee")</MudTh><MudTh>@T("Gün", "Days")</MudTh>
+            <MudTh Style="text-align:right">@T("Brüt", "Gross")</MudTh><MudTh Style="text-align:right">@T("SGK", "SSI")</MudTh>
+            <MudTh Style="text-align:right">@T("Vergi", "Tax")</MudTh><MudTh Style="text-align:right">@T("Net", "Net")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["employeeName"]</MudTd><MudTd>@context["payDays"]</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["grossPay"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["sgkEmployee"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["incomeTax"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["netPay"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/payroll/periods/{Id}"));
+}

@@ -1,0 +1,23 @@
+@page "/training/compliance"
+@inherits AppPage
+
+<PageTitle>@T("Zorunlu Eğitim Uyumu", "Training compliance") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Zorunlu Eğitim Uyumu", "Training compliance")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_rows.Count == 0) { <MudText>@T("Açık zorunlu eğitim yok.", "Every employee holds a valid certificate.")</MudText> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Personel", "Employee")</MudTh><MudTh>@T("Eğitim", "Course")</MudTh></HeaderContent>
+        <RowTemplate><MudTd>@context["employeeName"]</MudTd><MudTd>@context["courseTitle"]</MudTd></RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/training/compliance");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}
