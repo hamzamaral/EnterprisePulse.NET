@@ -91,6 +91,7 @@ public static partial class ResourceViews
         Sales();
         Work();
         People();
+        Ops();
     }
 
     static void Assets()
@@ -508,6 +509,65 @@ public static partial class ResourceViews
         {
             v.Columns = ["courseId", "startsAt", "status", "location", "instructor", "capacity"];
             v.FilterFields = ["status", "courseId"];
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+    }
+
+    static void Ops()
+    {
+        Configure("tickets", v =>
+        {
+            v.Columns = ["number", "subject", "priority", "status", "requesterId", "assigneeId", "resolutionDueAt"];
+            v.FilterFields = ["status", "priority", "assigneeId"];
+            v.DetailHref = "/support/tickets/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("ticket-categories", v =>
+        {
+            v.Columns = ["name", "defaultAssigneeId", "isActive", "sortOrder"];
+            v.FilterFields = ["isActive"];
+        });
+        Configure("contracts", v =>
+        {
+            v.Columns = ["number", "title", "status", "party", "partnerId", "employeeId", "startDate", "endDate", "amount"];
+            v.FilterFields = ["status", "party", "typeId"];
+            v.DetailHref = "/contracts/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("contract-types", v =>
+        {
+            v.Columns = ["name", "party", "flow", "defaultTermMonths", "defaultNoticeDays", "isActive"];
+            v.FilterFields = ["party", "isActive"];
+        });
+        Configure("budgets", v =>
+        {
+            v.Columns = ["year", "name", "status", "departmentId", "ownerId"];
+            v.FilterFields = ["year", "status"];
+            v.DetailHref = "/budgets/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("budget-items", v =>
+        {
+            v.Columns = ["code", "name", "kind", "source", "isActive"];
+            v.FilterFields = ["kind", "source", "isActive"];
+        });
+        Configure("budget-entries", v =>
+        {
+            v.Columns = ["itemId", "entryDate", "amount", "description", "departmentId"];
+            v.FilterFields = ["itemId"];
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("vehicles", v =>
+        {
+            v.Columns = ["plate", "brand", "model", "status", "odometer", "fuelType", "ownership"];
+            v.FilterFields = ["status", "fuelType"];
+            v.DetailHref = "/fleet/vehicles/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("vehicle-fuel-entries", v =>
+        {
+            v.Columns = ["vehicleId", "entryDate", "odometer", "liters", "amount", "consumption"];
+            v.FilterFields = ["vehicleId"];
             v.HideCreate = v.HideEdit = v.HideDelete = true;
         });
     }

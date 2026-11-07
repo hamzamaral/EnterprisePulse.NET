@@ -1,0 +1,27 @@
+@page "/support/tickets/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("Talep", "Ticket")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/tickets" />
+    <MudText Typo="Typo.h5">@(_row?["subject"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small">@Meta.EnumLabel("TicketStatus", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-2">@_row["number"] · @_row["requesterName"] · @(_row["assigneeName"]?.ToString() ?? T("Atanmamış", "Unassigned"))</MudText>
+    <MudText Class="mb-2">@_row["description"]</MudText>
+    <MudText Class="mb-3">SLA @_row["responseSla"] / @_row["resolutionSla"]</MudText>
+    <MudTable Items='@_row["comments"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Yazan", "Author")</MudTh><MudTh>@T("Mesaj", "Message")</MudTh></HeaderContent>
+        <RowTemplate><MudTd>@context["authorName"]</MudTd><MudTd>@context["body"]</MudTd></RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/support/tickets/{Id}"));
+}

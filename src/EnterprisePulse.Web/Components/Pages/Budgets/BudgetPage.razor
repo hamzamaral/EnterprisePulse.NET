@@ -1,0 +1,37 @@
+@page "/budgets/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["name"]?.ToString() ?? T("Bütçe", "Budget")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/budgets" />
+    <MudText Typo="Typo.h5">@(_row?["name"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small">@Meta.EnumLabel("BudgetStatus", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-3">
+        @_row["year"]
+        · @T("Gelir plan", "Income plan") @Fmt.Money(AssetUi.Dec(_row["plannedIncome"]), Session.Company?.BaseCurrency, Locale)
+        · @T("Gider plan", "Expense plan") @Fmt.Money(AssetUi.Dec(_row["plannedExpense"]), Session.Company?.BaseCurrency, Locale)
+    </MudText>
+    <MudTable Items='@_row["rows"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Kalem", "Item")</MudTh><MudTh Style="text-align:right">@T("Plan YTD", "Plan YTD")</MudTh>
+            <MudTh Style="text-align:right">@T("Gerçek", "Actual")</MudTh><MudTh>@T("Durum", "State")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["name"]</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["plannedYtd"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["actualYtd"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+            <MudTd>@context["state"]</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/budgets/{Id}"));
+}

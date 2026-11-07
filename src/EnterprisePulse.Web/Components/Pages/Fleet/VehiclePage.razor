@@ -1,0 +1,23 @@
+@page "/fleet/vehicles/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["plate"]?.ToString() ?? T("Araç", "Vehicle")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/vehicles" />
+    <MudText Typo="Typo.h5">@(_row?["plate"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small">@Meta.EnumLabel("VehicleStatus", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["brand"] @_row["model"] · @_row["odometer"] km</MudText>
+    <MudText Class="mt-2">@T("Sürücü", "Driver") @(_row["driverName"]?.ToString() ?? "—") · @T("Bakım", "Service") @_row["serviceState"]</MudText>
+    <MudText Class="mt-2">@T("Belge uyarısı", "Document warnings") @_row["openDocumentWarnings"]</MudText>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/fleet/vehicles/{Id}"));
+}

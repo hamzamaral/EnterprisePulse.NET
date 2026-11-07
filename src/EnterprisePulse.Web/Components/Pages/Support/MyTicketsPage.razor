@@ -1,0 +1,27 @@
+@page "/support/my"
+@inherits AppPage
+
+<PageTitle>@T("Destek Taleplerim", "My tickets") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Destek Taleplerim", "My tickets")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_rows.Count == 0) { <MudText>@T("Talebiniz yok.", "You have no tickets.")</MudText> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Numara", "Number")</MudTh><MudTh>@T("Konu", "Subject")</MudTh><MudTh>@T("Durum", "Status")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd><MudLink Href="@($"/support/tickets/{context["id"]}")">@context["number"]</MudLink></MudTd>
+            <MudTd>@context["subject"]</MudTd>
+            <MudTd>@Meta.EnumLabel("TicketStatus", context["status"]?.ToString() ?? "", Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/support/mine");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}

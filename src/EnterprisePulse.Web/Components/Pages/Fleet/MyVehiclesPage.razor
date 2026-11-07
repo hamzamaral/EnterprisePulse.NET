@@ -1,0 +1,27 @@
+@page "/fleet/my"
+@inherits AppPage
+
+<PageTitle>@T("Araçlarım", "My vehicles") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Araçlarım", "My vehicles")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_rows.Count == 0) { <MudText>@T("Zimmetli aracınız yok.", "You have no assigned vehicle.")</MudText> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Plaka", "Plate")</MudTh><MudTh>@T("Araç", "Vehicle")</MudTh><MudTh>@T("Km", "Km")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd><MudLink Href="@($"/fleet/vehicles/{context["id"]}")">@context["plate"]</MudLink></MudTd>
+            <MudTd>@context["brand"] @context["model"]</MudTd>
+            <MudTd>@context["odometer"]</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/fleet/mine");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}

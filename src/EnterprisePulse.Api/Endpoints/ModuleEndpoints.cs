@@ -13,5 +13,6 @@ public static class ModuleEndpoints
         app.MapWork();
         app.MapPayroll();
         app.MapPeople();
+        app.MapOps();
     }
 }

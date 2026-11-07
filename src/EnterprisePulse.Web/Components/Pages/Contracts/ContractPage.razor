@@ -1,0 +1,24 @@
+@page "/contracts/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("Sözleşme", "Contract")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/contracts" />
+    <MudText Typo="Typo.h5">@(_row?["title"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small">@_row["state"]</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["number"] · @_row["typeName"] · @(_row["partnerTitle"]?.ToString() ?? _row["employeeName"]?.ToString() ?? "—")</MudText>
+    <MudText Class="mt-2">
+        @_row["startDate"] → @(_row["endDate"]?.ToString() ?? "—")
+        @if (_row["amount"] != null) { <text> · @Fmt.Money(AssetUi.Dec(_row["amount"]), _row["currencyCode"]?.ToString(), Locale)</text> }
+    </MudText>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/contracts/{Id}"));
+}
