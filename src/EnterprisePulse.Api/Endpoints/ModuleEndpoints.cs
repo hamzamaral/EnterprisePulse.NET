@@ -10,5 +10,6 @@ public static class ModuleEndpoints
         app.MapInventory();
         app.MapPurchasing();
         app.MapSales();
+        app.MapWork();
     }
 }

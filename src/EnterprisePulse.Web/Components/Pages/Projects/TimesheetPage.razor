@@ -1,0 +1,29 @@
+@page "/projects/timesheet"
+@inherits AppPage
+
+<PageTitle>@T("Zaman çizelgesi", "Timesheet") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Zaman çizelgesi", "Timesheet")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Tarih", "Date")</MudTh><MudTh>@T("Personel", "Employee")</MudTh>
+            <MudTh Style="text-align:right">@T("Saat", "Hours")</MudTh><MudTh Style="text-align:right">@T("Maliyet", "Cost")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["workDate"]</MudTd><MudTd>@context["employeeName"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["hours"]).ToString("0.##")</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["costAmount"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/projects/time");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}

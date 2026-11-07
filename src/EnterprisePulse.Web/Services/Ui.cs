@@ -138,7 +138,8 @@ public static class Features
 {
     public static readonly HashSet<string> Groups =
     [
-        "Genel", "İnsan Kaynakları", "Zimmet ve Demirbaş", "Stok ve Depo", "Satın Alma", "Satış", "Cari ve Finans", "Onay Süreçleri", "Organizasyon", "Sistem",
+        "Genel", "İnsan Kaynakları", "Zimmet ve Demirbaş", "Stok ve Depo", "Satın Alma", "Satış", "Cari ve Finans",
+        "CRM", "Masraf ve Harcırah", "Proje Yönetimi", "Onay Süreçleri", "Organizasyon", "Sistem",
     ];
 
     public static readonly HashSet<string> Pages =
@@ -146,6 +147,7 @@ public static class Features
         "", "workflow/inbox", "roles", "settings",
         "hr/my-leave", "hr/my-attendance", "hr/org-chart", "hr/timesheet",
         "assets/my", "inventory", "finance/aging",
+        "expenses/my", "projects/my-tasks", "projects/timesheet",
     ];
 
     /// <summary>Resources of a live group that belong to a later phase.</summary>

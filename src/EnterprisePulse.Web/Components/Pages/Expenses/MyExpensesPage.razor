@@ -1,0 +1,30 @@
+@page "/expenses/my"
+@inherits AppPage
+
+<PageTitle>@T("Masraflarım", "My expenses") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Masraflarım", "My expenses")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_rows.Count == 0) { <MudText>@T("Kayıtlı masraf formunuz yok.", "You have no expense reports.")</MudText> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Hover="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Numara", "Number")</MudTh><MudTh>@T("Başlık", "Title")</MudTh><MudTh>@T("Durum", "Status")</MudTh><MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd class="ep-mono"><MudLink Href="@($"/expenses/reports/{context["id"]}")">@context["number"]</MudLink></MudTd>
+            <MudTd>@context["title"]</MudTd>
+            <MudTd>@Meta.EnumLabel("ExpenseReportStatus", context["status"]?.ToString() ?? "", Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["totalAmount"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/expenses/reports/mine");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}

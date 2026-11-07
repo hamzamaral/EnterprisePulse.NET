@@ -1,0 +1,29 @@
+@page "/crm/activities/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Aktivite", "Activity") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/crm-activities" />
+    <MudText Typo="Typo.h5">@(_row?["subject"]?.ToString() ?? "…")</MudText>
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@Meta.EnumLabel("CrmActivityType", _row["type"]?.ToString() ?? "", Locale) · @_row["ownerName"]</MudText>
+    <MudText Class="mb-2">@(_row["overdue"]?.GetValue<bool>() == true ? T("Gecikti", "Overdue") : T("Açık", "Open"))</MudText>
+    @if (_row["completedAt"] == null && Session.Has("crm:update"))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Complete">@T("Tamamla", "Complete")</MudButton>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    protected override async Task OnParametersSetAsync() => await Load();
+    private async Task Load() => await Run(async () => _row = await Api.GetJsonAsync($"/api/crm/activities/{Id}"));
+    private async Task Complete()
+    {
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/crm/activities/{Id}/complete"), T("Aktivite tamamlandı", "Activity completed"))) await Load();
+    }
+}

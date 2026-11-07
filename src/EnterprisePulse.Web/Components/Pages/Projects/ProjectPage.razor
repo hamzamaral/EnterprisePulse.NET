@@ -1,0 +1,45 @@
+@page "/projects/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("Proje", "Project")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/projects" />
+    <MudText Typo="Typo.h5">@(_row?["name"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("ProjectStatus", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["number"] · @_row["managerName"] · @(_row["partnerTitle"]?.ToString() ?? "—")</MudText>
+    <MudText Class="mb-3">
+        @T("Bütçe", "Budget") @Fmt.Money(AssetUi.Dec(_row["budgetAmount"]), Session.Company?.BaseCurrency, Locale)
+        · @T("İşçilik", "Labour") @Fmt.Money(AssetUi.Dec(_row["labourCost"]), Session.Company?.BaseCurrency, Locale)
+        · @T("Masraf", "Expenses") @Fmt.Money(AssetUi.Dec(_row["expenseCost"]), Session.Company?.BaseCurrency, Locale)
+        · @T("Kalan", "Left") @Fmt.Money(AssetUi.Dec(_row["remaining"]), Session.Company?.BaseCurrency, Locale)
+    </MudText>
+    <MudText Typo="Typo.subtitle1">@T("Görevler", "Tasks")</MudText>
+    <MudTable Items='@_row["tasks"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mb-3">
+        <HeaderContent><MudTh>#</MudTh><MudTh>@T("Başlık", "Title")</MudTh><MudTh>@T("Durum", "Status")</MudTh><MudTh>@T("Atanan", "Assignee")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["taskNo"]</MudTd><MudTd>@context["title"]</MudTd>
+            <MudTd>@Meta.EnumLabel("ProjectTaskStatus", context["status"]?.ToString() ?? "", Locale)</MudTd>
+            <MudTd>@context["assigneeName"]</MudTd>
+        </RowTemplate>
+    </MudTable>
+    <MudText Typo="Typo.subtitle1">@T("Süre", "Time")</MudText>
+    <MudTable Items='@_row["time"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>@T("Tarih", "Date")</MudTh><MudTh>@T("Personel", "Employee")</MudTh><MudTh Style="text-align:right">@T("Saat", "Hours")</MudTh><MudTh Style="text-align:right">@T("Maliyet", "Cost")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["workDate"]</MudTd><MudTd>@context["employeeName"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["hours"]).ToString("0.##")</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["costAmount"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/projects/{Id}"));
+}

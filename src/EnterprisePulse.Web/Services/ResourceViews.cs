@@ -89,6 +89,7 @@ public static partial class ResourceViews
         Assets();
         Inventory();
         Sales();
+        Work();
     }
 
     static void Assets()
@@ -404,6 +405,50 @@ public static partial class ResourceViews
             v.Columns = ["number", "kind", "direction", "status", "serialNo", "partnerId", "dueDate", "amount", "currencyCode"];
             v.FilterFields = ["kind", "direction", "status", "partnerId", "dueDate"];
             v.DetailHref = "/finance/cheques/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+    }
+
+    static void Work()
+    {
+        Configure("leads", v =>
+        {
+            v.Columns = ["number", "companyName", "contactName", "city", "source", "status", "estimatedValue", "ownerId"];
+            v.FilterFields = ["status", "source", "ownerId"];
+            v.DetailHref = "/crm/leads/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("opportunities", v =>
+        {
+            v.Columns = ["number", "title", "partnerId", "stage", "amount", "probability", "expectedCloseDate", "ownerId"];
+            v.FilterFields = ["stage", "partnerId", "ownerId"];
+            v.DetailHref = "/crm/opportunities/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("crm-activities", v =>
+        {
+            v.Columns = ["type", "subject", "dueAt", "completedAt", "ownerId", "opportunityId", "partnerId"];
+            v.FilterFields = ["type", "ownerId"];
+            v.DetailHref = "/crm/activities/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("expense-reports", v =>
+        {
+            v.Columns = ["number", "employeeId", "projectId", "title", "totalAmount", "status", "paymentDate"];
+            v.FilterFields = ["status", "employeeId", "projectId"];
+            v.DetailHref = "/expenses/reports/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("expense-categories", v =>
+        {
+            v.Columns = ["code", "name", "kind", "rate", "limitAmount", "requiresReceipt", "isActive"];
+            v.FilterFields = ["kind", "isActive"];
+        });
+        Configure("projects", v =>
+        {
+            v.Columns = ["number", "name", "partnerId", "managerId", "status", "startDate", "dueDate", "budgetAmount", "expenseCost"];
+            v.FilterFields = ["status", "managerId", "partnerId"];
+            v.DetailHref = "/projects/{id}";
             v.HideCreate = v.HideEdit = v.HideDelete = true;
         });
     }

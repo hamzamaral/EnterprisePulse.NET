@@ -1,0 +1,37 @@
+@page "/crm/opportunities/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("Fırsat", "Opportunity")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/opportunities" />
+    <MudText Typo="Typo.h5">@(_row?["title"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("OpportunityStage", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["number"] · @_row["partnerTitle"]</MudText>
+    <MudText>@T("Tutar", "Amount"): @Fmt.Money(AssetUi.Dec(_row["amount"]), _row["currencyCode"]?.ToString(), Locale) · %@HrUi.Int(_row["probability"])</MudText>
+    <MudText Class="mb-3">@T("Ağırlıklı", "Weighted"): @Fmt.Money(AssetUi.Dec(_row["weightedAmount"]), _row["currencyCode"]?.ToString(), Locale)</MudText>
+    @if (Session.Has("crm:update") && Status is not ("WON" or "LOST"))
+    {
+        <MudStack Row="true" Spacing="1">
+            <MudButton Variant="Variant.Outlined" OnClick='() => Stage("QUALIFICATION")'>@T("Nitelendirme", "Qualification")</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick='() => Stage("PROPOSAL")'>@T("Teklif", "Proposal")</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick='() => Stage("NEGOTIATION")'>@T("Pazarlık", "Negotiation")</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick='() => Stage("WON")'>@T("Kazanıldı", "Won")</MudButton>
+        </MudStack>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"] == null ? _row?["stage"]?.ToString() ?? "" : _row["stage"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Load();
+    private async Task Load() => await Run(async () => _row = await Api.GetJsonAsync($"/api/crm/opportunities/{Id}"));
+    private async Task Stage(string stage)
+    {
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/crm/opportunities/{Id}/stage", new { stage }), T("Aşama güncellendi", "Stage updated"))) await Load();
+    }
+}

@@ -1,0 +1,27 @@
+@page "/projects/my-tasks"
+@inherits AppPage
+
+<PageTitle>@T("Görevlerim", "My tasks") · EnterprisePulse</PageTitle>
+<div class="ep-page-header"><MudText Typo="Typo.h5">@T("Görevlerim", "My tasks")</MudText></div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (_rows.Count == 0) { <MudText>@T("Açık göreviniz yok.", "You have no open tasks.")</MudText> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>#</MudTh><MudTh>@T("Başlık", "Title")</MudTh><MudTh>@T("Durum", "Status")</MudTh><MudTh>@T("Vade", "Due")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["taskNo"]</MudTd><MudTd>@context["title"]</MudTd>
+            <MudTd>@Meta.EnumLabel("ProjectTaskStatus", context["status"]?.ToString() ?? "", Locale)</MudTd>
+            <MudTd>@context["dueDate"]</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    protected override async Task OnInitializedAsync() => await Run(async () =>
+    {
+        var data = await Api.GetJsonAsync("/api/projects/my-tasks");
+        _rows = data["items"] is JsonArray array ? array.Select(n => n!.AsObject()).ToList() : [];
+    });
+}

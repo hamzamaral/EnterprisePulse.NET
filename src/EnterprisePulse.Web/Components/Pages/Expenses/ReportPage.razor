@@ -1,0 +1,34 @@
+@page "/expenses/reports/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("Masraf formu", "Expense report")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/expense-reports" />
+    <MudText Typo="Typo.h5">@(_row?["number"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("ExpenseReportStatus", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["title"] · @_row["employeeName"] · @(_row["projectName"]?.ToString() ?? "—")</MudText>
+    <MudText Class="mb-2">@T("Toplam", "Total"): @Fmt.Money(AssetUi.Dec(_row["totalAmount"]), Session.Company?.BaseCurrency, Locale)</MudText>
+    <MudTable Items='@_row["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Tür", "Type")</MudTh><MudTh>@T("Açıklama", "Description")</MudTh>
+            <MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh><MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["categoryName"]</MudTd>
+            <MudTd>@context["description"] @(context["overLimit"]?.GetValue<bool>() == true ? T("(limit aşımı)", "(over limit)") : "")</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.##")</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["amountBase"]), Session.Company?.BaseCurrency, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/expenses/reports/{Id}"));
+}

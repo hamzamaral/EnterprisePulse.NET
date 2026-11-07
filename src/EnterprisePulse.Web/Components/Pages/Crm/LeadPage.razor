@@ -1,0 +1,24 @@
+@page "/crm/leads/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("Potansiyel müşteri", "Lead")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/leads" />
+    <MudText Typo="Typo.h5">@(_row?["number"]?.ToString() ?? "…")</MudText>
+    @if (_row != null) { <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("LeadStatus", Status, Locale)</MudChip> }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["companyName"] · @_row["contactName"] · @_row["city"]</MudText>
+    <MudText Class="mb-2">@T("Tahmini", "Estimate"): @Fmt.Money(AssetUi.Dec(_row["estimatedValue"]), _row["currencyCode"]?.ToString(), Locale)</MudText>
+    @if (_row["partnerTitle"] != null) { <MudText>@T("Cari", "Customer"): @_row["partnerTitle"]</MudText> }
+    @if (_row["disqualifyReason"] != null) { <MudText>@_row["disqualifyReason"]</MudText> }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    protected override async Task OnParametersSetAsync() => await Run(async () => _row = await Api.GetJsonAsync($"/api/crm/leads/{Id}"));
+}
