@@ -1,0 +1,110 @@
+@page "/sales/returns/new"
+@page "/sales/returns/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Satış iadesi", "Sales return") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/sales-returns" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@(IsNew ? T("Yeni satış iadesi", "New sales return") : _row?["number"]?.ToString())</MudText>
+    @if (IsNew) { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@T("İadeyi kaydet", "Post return")</MudButton> }
+</div>
+
+@if (!IsNew)
+{
+    @if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+    else
+    {
+        <MudText>@T("Fatura", "Invoice") <MudLink Href="@($"/sales/invoices/{_row["invoiceId"]}")">@_row["invoiceNumber"]</MudLink>
+            · @_row["partnerTitle"] · @_row["warehouseName"] · @AssetUi.Day(_row["returnDate"])</MudText>
+        <MudText Class="mt-2">@_row["reason"]</MudText>
+        <MudText Class="mt-2"><b>@Fmt.Money(AssetUi.Dec(_row["grandTotal"]), _row["currencyCode"]?.ToString(), Locale)</b></MudText>
+        @if (_row["stockMovementId"] != null)
+        {
+            <div><MudLink Href="@($"/inventory/movements/{_row["stockMovementId"]}")">@T("Stok hareketi", "Stock movement") @_row["stockMovementNumber"]</MudLink></div>
+        }
+    }
+}
+else
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_invoiceId" Label="@T("Fatura kimliği", "Invoice id")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" sm="3"><RefPicker Resource="warehouses" @bind-Value="_warehouse" Label="@T("İade deposu", "Return warehouse")" Required="true" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_reason" Label="@T("Gerekçe", "Reason")" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+    @if (_lines.Count > 0)
+    {
+        <MudButton Variant="Variant.Text" OnClick="Load">@T("Satırları yenile", "Reload lines")</MudButton>
+        <MudTable Items="_lines" Dense="true" Elevation="0" Outlined="true">
+            <HeaderContent><MudTh>SKU</MudTh><MudTh>@T("Faturalanan", "Invoiced")</MudTh><MudTh>@T("İade", "Return")</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Sku @context.Description</MudTd>
+                <MudTd>@context.Open.ToString("0.###")</MudTd>
+                <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" Max="@context.Open" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+    else
+    {
+        <MudButton Variant="Variant.Outlined" OnClick="Load">@T("Fatura satırlarını getir", "Load invoice lines")</MudButton>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+    private JsonObject? _row;
+    private string? _invoiceId;
+    private string? _warehouse;
+    private DateTime? _date = DateTime.Today;
+    private string? _reason;
+    private List<ReturnLine> _lines = [];
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!IsNew)
+        {
+            await Run(async () => _row = await Api.GetJsonAsync($"/api/sales/returns/{Id}"));
+            return;
+        }
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("invoiceId", out var id)) { _invoiceId = id.ToString(); await Load(); }
+    }
+
+    private async Task Load()
+    {
+        if (string.IsNullOrWhiteSpace(_invoiceId)) return;
+        JsonObject? invoice = null;
+        await Run(async () => invoice = await Api.GetJsonAsync($"/api/sales/invoices/{_invoiceId}"));
+        if (invoice == null) return;
+        _lines = invoice["lines"]!.AsArray().Select(n => n!.AsObject()).Select(l =>
+        {
+            var open = AssetUi.Dec(l["quantity"]) - AssetUi.Dec(l["returnedQty"]);
+            return new ReturnLine(l["id"]!.ToString(), l["sku"]?.ToString() ?? "", l["description"]?.ToString() ?? "", open);
+        }).Where(l => l.Open > 0).ToList();
+    }
+
+    private async Task Save()
+    {
+        var lines = _lines.Where(l => l.Quantity > 0).Select(l => new { invoiceLineId = l.Id, quantity = l.Quantity }).ToList();
+        if (lines.Count == 0) return;
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/sales/returns", new
+        {
+            invoiceId = _invoiceId, warehouseId = _warehouse, returnDate = AssetUi.Iso(_date), reason = _reason, lines,
+        }), T("İade kaydedildi", "Return posted"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/sales/returns/{created["id"]}");
+    }
+
+    private sealed class ReturnLine(string id, string sku, string description, decimal open)
+    {
+        public string Id { get; } = id;
+        public string Sku { get; } = sku;
+        public string Description { get; } = description;
+        public decimal Open { get; } = open;
+        public decimal Quantity { get; set; }
+    }
+}

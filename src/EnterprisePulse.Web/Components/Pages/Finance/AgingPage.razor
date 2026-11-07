@@ -1,0 +1,97 @@
+@page "/finance/aging"
+@inherits AppPage
+
+<PageTitle>@T("Finans raporları", "Finance reports") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Finans raporları", "Finance reports")</MudText>
+</div>
+<MudTabs @bind-ActivePanelIndex="_tab" ApplyEffectsToContainer="true">
+    <MudTabPanel Text="@T("Yaşlandırma", "Aging")">
+        <MudStack Row="true" Class="my-3">
+            <MudButton Variant="Variant.Outlined" Color="@(_kind == "sales" ? Color.Primary : Color.Default)" OnClick='() => LoadAging("sales")'>@T("Alacak", "Receivables")</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="@(_kind == "purchase" ? Color.Primary : Color.Default)" OnClick='() => LoadAging("purchase")'>@T("Borç", "Payables")</MudButton>
+        </MudStack>
+        @if (_aging != null)
+        {
+            <MudGrid>
+                @foreach (var b in _aging["buckets"]!.AsArray())
+                {
+                    <MudItem xs="6" sm="2"><MudPaper Outlined="true" Class="pa-3"><div class="ep-muted">@b!["label"]</div><MudText Typo="Typo.h6">@AssetUi.Dec(b["amount"]).ToString("N2")</MudText></MudPaper></MudItem>
+                }
+            </MudGrid>
+            <MudTable Items='@_aging["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mt-3">
+                <HeaderContent><MudTh>@T("Belge", "Document")</MudTh><MudTh>@T("Cari", "Partner")</MudTh><MudTh>@T("Vade", "Due")</MudTh><MudTh Style="text-align:right">@T("Gün", "Days")</MudTh><MudTh Style="text-align:right">@T("Açık (baz)", "Open (base)")</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd class="ep-mono">@context["number"]</MudTd><MudTd>@context["partner"]</MudTd><MudTd>@AssetUi.Day(context["dueDate"])</MudTd>
+                    <MudTd Style="text-align:right">@context["days"]</MudTd><MudTd Style="text-align:right">@AssetUi.Dec(context["openBase"]).ToString("N2")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+    <MudTabPanel Text="@T("Satış", "Sales")">
+        @if (_sales != null)
+        {
+            <MudText Class="mt-3">@T("Baz toplam", "Base total"): <b>@AssetUi.Dec(_sales["grandTotalBase"]).ToString("N2")</b> · @_sales["count"]</MudText>
+            <MudTable Items='@_sales["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mt-2">
+                <HeaderContent><MudTh>@T("Belge", "Document")</MudTh><MudTh>@T("Cari", "Partner")</MudTh><MudTh>@T("Tarih", "Date")</MudTh><MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh><MudTh Style="text-align:right">@T("Baz", "Base")</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd class="ep-mono">@context["number"]</MudTd><MudTd>@context["partner"]</MudTd><MudTd>@AssetUi.Day(context["date"])</MudTd>
+                    <MudTd Style="text-align:right">@AssetUi.Dec(context["grandTotal"]).ToString("N2") @context["currencyCode"]</MudTd>
+                    <MudTd Style="text-align:right">@AssetUi.Dec(context["grandTotalBase"]).ToString("N2")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+    <MudTabPanel Text="@T("Alış", "Purchases")">
+        @if (_purchases != null)
+        {
+            <MudText Class="mt-3">@T("Baz toplam", "Base total"): <b>@AssetUi.Dec(_purchases["grandTotalBase"]).ToString("N2")</b> · @_purchases["count"]</MudText>
+            <MudTable Items='@_purchases["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mt-2">
+                <HeaderContent><MudTh>@T("Belge", "Document")</MudTh><MudTh>@T("Cari", "Partner")</MudTh><MudTh>@T("Tarih", "Date")</MudTh><MudTh Style="text-align:right">@T("Baz", "Base")</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd class="ep-mono">@context["number"]</MudTd><MudTd>@context["partner"]</MudTd><MudTd>@AssetUi.Day(context["date"])</MudTd>
+                    <MudTd Style="text-align:right">@AssetUi.Dec(context["grandTotalBase"]).ToString("N2")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+    <MudTabPanel Text="@T("Nakit akışı", "Cash flow")">
+        @if (_cash != null)
+        {
+            <MudTable Items='@_cash["accounts"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mt-3">
+                <HeaderContent><MudTh>@T("Hesap", "Account")</MudTh><MudTh>@T("Para", "Currency")</MudTh><MudTh Style="text-align:right">@T("Giriş", "In")</MudTh><MudTh Style="text-align:right">@T("Çıkış", "Out")</MudTh><MudTh Style="text-align:right">@T("Net", "Net")</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context["code"] @context["name"]</MudTd><MudTd>@context["currencyCode"]</MudTd>
+                    <MudTd Style="text-align:right">@AssetUi.Dec(context["amountIn"]).ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@AssetUi.Dec(context["amountOut"]).ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@AssetUi.Dec(context["net"]).ToString("N2")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private int _tab;
+    private string _kind = "sales";
+    private JsonObject? _aging;
+    private JsonObject? _sales;
+    private JsonObject? _purchases;
+    private JsonObject? _cash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var from = DateOnly.FromDateTime(DateTime.Today.AddMonths(-2)).ToString("yyyy-MM-dd");
+        var to = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+        await LoadAging("sales");
+        await Run(async () => _sales = await Api.GetJsonAsync($"/api/finance/reports/sales?from={from}&to={to}"));
+        await Run(async () => _purchases = await Api.GetJsonAsync($"/api/finance/reports/purchases?from={from}&to={to}"));
+        await Run(async () => _cash = await Api.GetJsonAsync($"/api/finance/reports/cashflow?from={from}&to={to}"));
+    }
+
+    private async Task LoadAging(string kind)
+    {
+        _kind = kind;
+        await Run(async () => _aging = await Api.GetJsonAsync($"/api/finance/reports/aging?kind={kind}"));
+    }
+}

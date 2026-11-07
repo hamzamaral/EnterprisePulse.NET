@@ -1,0 +1,121 @@
+@page "/sales/deliveries/new"
+@page "/sales/deliveries/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Sevk irsaliyesi", "Delivery note") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/delivery-notes" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@(IsNew ? T("Yeni irsaliye", "New delivery") : _row?["number"]?.ToString())</MudText>
+    @if (IsNew) { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || _order == null">@T("Sevk et", "Deliver")</MudButton> }
+</div>
+
+@if (!IsNew)
+{
+    @if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+    else
+    {
+        <MudText Class="mb-2">@T("Sipariş", "Order") <MudLink Href="@($"/sales/orders/{_row["orderId"]}")">@_row["orderNumber"]</MudLink>
+            · @_row["partnerTitle"] · @_row["warehouseName"] · @AssetUi.Day(_row["deliveryDate"])</MudText>
+        @if (_row["stockMovementId"] != null)
+        {
+            <MudLink Href="@($"/inventory/movements/{_row["stockMovementId"]}")">@T("Stok hareketi", "Stock movement") @_row["stockMovementNumber"]</MudLink>
+        }
+        <MudTable Items='@_row["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="1" Class="mt-3">
+            <HeaderContent><MudTh>SKU</MudTh><MudTh>@T("Açıklama", "Description")</MudTh><MudTh>@T("Lot / seri", "Lot / serial")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd class="ep-mono">@context["sku"]</MudTd><MudTd>@context["description"]</MudTd>
+                <MudTd>@context["lotNo"] @context["serialNos"]</MudTd><MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+else
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="5">
+            <MudSelect T="string" Value="@_orderId" ValueChanged="LoadOrder" Label="@T("Sipariş", "Order")" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var o in _open)
+                {
+                    <MudSelectItem T="string" Value='@o["id"]!.ToString()'>@o["number"] · @o["partnerTitle"]</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3"><MudDatePicker @bind-Date="_date" Label="@T("Sevk tarihi", "Delivery date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="6" sm="4"><MudTextField @bind-Value="_carrier" Label="@T("Taşıyıcı", "Carrier")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_address" Label="@T("Sevk adresi", "Shipping address")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+    @if (_order != null)
+    {
+        <MudTable Items="_ship" Dense="true" Elevation="0" Outlined="true">
+            <HeaderContent><MudTh>SKU</MudTh><MudTh>@T("Kalan", "Open")</MudTh><MudTh>@T("Sevk", "Ship")</MudTh><MudTh>@T("Lot", "Lot")</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd class="ep-mono">@context.Sku</MudTd>
+                <MudTd>@context.Open.ToString("0.###")</MudTd>
+                <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" Max="@context.Open" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudTd>
+                <MudTd><MudTextField @bind-Value="context.LotNo" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+    private JsonObject? _row;
+    private JsonObject? _order;
+    private List<JsonObject> _open = [];
+    private string? _orderId;
+    private DateTime? _date = DateTime.Today;
+    private string? _carrier;
+    private string? _address;
+    private List<ShipLine> _ship = [];
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!IsNew)
+        {
+            await Run(async () => _row = await Api.GetJsonAsync($"/api/sales/deliveries/{Id}"));
+            return;
+        }
+        await Run(async () => _open = await Api.GetAsync<List<JsonObject>>("/api/sales/orders/open") ?? []);
+        _open = _open.Where(o => HrUi.Bool(o["canDeliver"])).ToList();
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("orderId", out var id)) await LoadOrder(id.ToString());
+    }
+
+    private async Task LoadOrder(string? id)
+    {
+        _orderId = id;
+        _order = null;
+        _ship = [];
+        if (string.IsNullOrEmpty(id)) return;
+        await Run(async () => _order = await Api.GetJsonAsync($"/api/sales/orders/{id}"));
+        if (_order == null) return;
+        _ship = _order["lines"]!.AsArray().Select(n => n!.AsObject()).Where(l => HrUi.Bool(l["stocked"]) && AssetUi.Dec(l["remainingQty"]) > 0)
+            .Select(l => new ShipLine(l["id"]!.ToString(), l["sku"]?.ToString() ?? "", AssetUi.Dec(l["remainingQty"]))).ToList();
+    }
+
+    private async Task Save()
+    {
+        var lines = _ship.Where(l => l.Quantity > 0).Select(l => new { orderLineId = l.Id, quantity = l.Quantity, lotNo = string.IsNullOrWhiteSpace(l.LotNo) ? null : l.LotNo }).ToList();
+        if (lines.Count == 0) return;
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/sales/deliveries", new
+        {
+            orderId = _orderId, deliveryDate = AssetUi.Iso(_date), shippingAddress = _address, carrier = _carrier, lines,
+        }), T("İrsaliye kesildi", "Delivery posted"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/sales/deliveries/{created["id"]}");
+    }
+
+    private sealed class ShipLine(string id, string sku, decimal open)
+    {
+        public string Id { get; } = id;
+        public string Sku { get; } = sku;
+        public decimal Open { get; } = open;
+        public decimal Quantity { get; set; } = open;
+        public string? LotNo { get; set; }
+    }
+}

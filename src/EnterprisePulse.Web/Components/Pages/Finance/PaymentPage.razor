@@ -1,0 +1,115 @@
+@page "/finance/payments/new"
+@page "/finance/payments/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Tahsilat / ödeme", "Collection / payment") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/partner-payments" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@(IsNew ? T("Yeni tahsilat veya ödeme", "New collection or payment") : _row?["number"]?.ToString())</MudText>
+    @if (IsNew) { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@L("save")</MudButton> }
+    else if (_row != null && _row["status"]?.ToString() == "POSTED" && Session.Has("finance:update"))
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Cancel">@T("İptal et", "Cancel")</MudButton>
+    }
+</div>
+
+@if (!IsNew)
+{
+    @if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+    else
+    {
+        <MudText>@Meta.EnumLabel("PaymentDirection", _row["direction"]?.ToString(), Locale) · @Meta.EnumLabel("PaymentMethod", _row["method"]?.ToString(), Locale)
+            · @_row["partnerTitle"] · @AssetUi.Day(_row["paymentDate"])</MudText>
+        <MudText Class="mt-2"><b>@Fmt.Money(AssetUi.Dec(_row["amount"]), _row["currencyCode"]?.ToString(), Locale)</b>
+            · @T("Baz", "Base") @Fmt.Money(AssetUi.Dec(_row["amountBase"]), Session.Company?.BaseCurrency, Locale)</MudText>
+        @if (_row["accountName"] != null) { <MudText>@_row["accountName"]</MudText> }
+        @if (_row["chequeId"] != null) { <MudLink Href="@($"/finance/cheques/{_row["chequeId"]}")">@T("Çek", "Cheque") @_row["chequeNumber"]</MudLink> }
+        <MudText Class="mt-2">@_row["description"]</MudText>
+    }
+}
+else
+{
+    <MudGrid Spacing="2">
+        <MudItem xs="6" sm="3">
+            <MudSelect T="string" @bind-Value="_direction" Label="@T("Yön", "Direction")" Variant="Variant.Outlined" Margin="Margin.Dense">
+                <MudSelectItem T="string" Value="@("IN")">@T("Tahsilat", "Collection")</MudSelectItem>
+                <MudSelectItem T="string" Value="@("OUT")">@T("Ödeme", "Payment")</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudSelect T="string" @bind-Value="_method" Label="@T("Yöntem", "Method")" Variant="Variant.Outlined" Margin="Margin.Dense">
+                <MudSelectItem T="string" Value="@("CASH")">@T("Kasa", "Cash")</MudSelectItem>
+                <MudSelectItem T="string" Value="@("BANK")">@T("Banka", "Bank")</MudSelectItem>
+                <MudSelectItem T="string" Value="@("CHEQUE")">@T("Çek", "Cheque")</MudSelectItem>
+                <MudSelectItem T="string" Value="@("NOTE")">@T("Senet", "Note")</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4"><RefPicker Resource="business-partners" @bind-Value="_partner" Label="@T("Cari", "Partner")" Required="true" Filters="_partners" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_amount" Label="@T("Tutar", "Amount")" Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="4" sm="2"><MudTextField @bind-Value="_currency" Label="@T("Para birimi", "Currency")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        @if (_method is "CASH" or "BANK")
+        {
+            <MudItem xs="12" sm="4"><RefPicker Resource="treasury-accounts" @bind-Value="_account" Label="@T("Hesap", "Account")" Required="true" /></MudItem>
+        }
+        else
+        {
+            <MudItem xs="6" sm="3"><MudTextField @bind-Value="_serial" Label="@T("Seri no", "Serial no")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField @bind-Value="_bank" Label="@T("Banka", "Bank")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_due" Label="@T("Vade", "Due")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        }
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_invoiceId" Label="@(_direction == "IN" ? T("Satış faturası", "Sales invoice") : T("Alış faturası", "Purchase invoice"))" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_description" Label="@T("Açıklama", "Description")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+    private Dictionary<string, string> _partners => new() { ["type__in"] = _direction == "OUT" ? "SUPPLIER,BOTH" : "CUSTOMER,BOTH" };
+    private JsonObject? _row;
+    private string _direction = "IN";
+    private string _method = "CASH";
+    private string? _partner;
+    private string? _account;
+    private string? _serial;
+    private string? _bank;
+    private string? _invoiceId;
+    private string? _description;
+    private string _currency = "TRY";
+    private decimal _amount;
+    private DateTime? _date = DateTime.Today;
+    private DateTime? _due;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!IsNew) await Run(async () => _row = await Api.GetJsonAsync($"/api/finance/payments/{Id}"));
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("direction", out var d)) _direction = d.ToString();
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        object? allocation = string.IsNullOrWhiteSpace(_invoiceId) ? null
+            : _direction == "IN" ? new { salesInvoiceId = _invoiceId, amount = _amount } : new { purchaseInvoiceId = _invoiceId, amount = _amount };
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/finance/payments", new
+        {
+            direction = _direction, method = _method, partnerId = _partner, paymentDate = AssetUi.Iso(_date), accountId = _account,
+            amount = _amount, currencyCode = _currency, description = _description, chequeSerial = _serial, bankName = _bank,
+            dueDate = _due == null ? null : AssetUi.Iso(_due),
+            allocations = allocation == null ? Array.Empty<object>() : new[] { allocation },
+        }), L("saved"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/finance/payments/{created["id"]}");
+    }
+
+    private async Task Cancel()
+    {
+        var reason = await PromptDialog.AskAsync(Dialogs, T("Belgeyi iptal et", "Cancel document"), T("Gerekçe", "Reason"), message: T("Kasa ve cari kaydı tersine çevrilir.", "Treasury and ledger entries will be reversed."));
+        if (reason == null) return;
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/finance/payments/{Id}/cancel", new { reason }))) { }
+    }
+}

@@ -88,6 +88,7 @@ public static partial class ResourceViews
         Hr();
         Assets();
         Inventory();
+        Sales();
     }
 
     static void Assets()
@@ -328,6 +329,82 @@ public static partial class ResourceViews
             v.CreateHref = "/purchasing/invoices/new";
             v.DetailHref = "/purchasing/invoices/{id}";
             v.HideEdit = v.HideDelete = true;
+        });
+    }
+
+    static void Sales()
+    {
+        Configure("sales-quotes", v =>
+        {
+            v.Columns = ["number", "partnerId", "quoteDate", "validUntil", "currencyCode", "grandTotal", "status"];
+            v.FilterFields = ["status", "partnerId", "quoteDate"];
+            v.CreateHref = "/sales/quotes/new";
+            v.DetailHref = "/sales/quotes/{id}";
+            v.HideEdit = v.HideDelete = true;
+            v.HiddenChildren = ["sales-quote-lines"];
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "Kabul et", LabelEn = "Accept", Icon = Icons.Material.Filled.Check, Permission = "sales:create",
+                Visible = ResourceAction.StatusIn("OPEN"), Run = Components.Pages.Sales.AcceptSalesQuoteDialog.Open,
+            });
+            v.Actions.Add(new ResourceAction
+            {
+                Label = "Reddet", LabelEn = "Reject", Icon = Icons.Material.Filled.Close, Color = Color.Error, Permission = "sales:update",
+                Visible = ResourceAction.StatusIn("OPEN"), Endpoint = "/api/sales/quotes/{id}/reject", Confirm = "Teklif reddedilecek.",
+            });
+        });
+        Configure("sales-orders", v =>
+        {
+            v.Columns = ["number", "partnerId", "orderDate", "deliveryDate", "warehouseId", "currencyCode", "grandTotal", "status"];
+            v.FilterFields = ["status", "partnerId", "warehouseId", "orderDate"];
+            v.CreateHref = "/sales/orders/new";
+            v.DetailHref = "/sales/orders/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("delivery-notes", v =>
+        {
+            v.Columns = ["number", "orderId", "partnerId", "warehouseId", "deliveryDate", "carrier"];
+            v.FilterFields = ["partnerId", "warehouseId", "deliveryDate"];
+            v.CreateHref = "/sales/deliveries/new";
+            v.DetailHref = "/sales/deliveries/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("sales-invoices", v =>
+        {
+            v.Columns = ["number", "partnerId", "invoiceDate", "dueDate", "grandTotal", "paidAmount", "paymentStatus", "status"];
+            v.FilterFields = ["status", "paymentStatus", "partnerId", "invoiceDate"];
+            v.CreateHref = "/sales/invoices/new";
+            v.DetailHref = "/sales/invoices/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("sales-returns", v =>
+        {
+            v.Columns = ["number", "invoiceId", "partnerId", "returnDate", "grandTotal", "reason"];
+            v.FilterFields = ["partnerId", "returnDate"];
+            v.CreateHref = "/sales/returns/new";
+            v.DetailHref = "/sales/returns/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("treasury-accounts", v =>
+        {
+            v.Columns = ["code", "name", "type", "currencyCode", "bankName", "iban", "isActive"];
+            v.FilterFields = ["type", "currencyCode", "isActive"];
+            v.Tabs.Add(new ResourceTab { Title = "Hareketler", Component = typeof(Components.Pages.Finance.TreasuryTxTab) });
+        });
+        Configure("partner-payments", v =>
+        {
+            v.Columns = ["number", "direction", "method", "partnerId", "paymentDate", "amount", "currencyCode", "status"];
+            v.FilterFields = ["direction", "method", "status", "partnerId", "paymentDate"];
+            v.CreateHref = "/finance/payments/new";
+            v.DetailHref = "/finance/payments/{id}";
+            v.HideEdit = v.HideDelete = true;
+        });
+        Configure("cheques", v =>
+        {
+            v.Columns = ["number", "kind", "direction", "status", "serialNo", "partnerId", "dueDate", "amount", "currencyCode"];
+            v.FilterFields = ["kind", "direction", "status", "partnerId", "dueDate"];
+            v.DetailHref = "/finance/cheques/{id}";
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
         });
     }
 }

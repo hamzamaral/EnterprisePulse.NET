@@ -1,0 +1,126 @@
+@page "/sales/invoices/new"
+@page "/sales/invoices/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Satış faturası", "Sales invoice") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/sales-invoices" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@(IsNew ? T("Yeni satış faturası", "New sales invoice") : _row?["number"]?.ToString())</MudText>
+            @if (_row != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color='@Fmt.StatusColor(_row["paymentStatus"]?.ToString())'>@Meta.EnumLabel("PaymentStatus", _row["paymentStatus"]?.ToString(), Locale)</MudChip>
+                @if (HrUi.Bool(_row["isOverdue"])) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@T("Vadesi geçti", "Overdue")</MudChip> }
+            }
+        </MudStack>
+    </div>
+    @if (IsNew) { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@T("Faturayı kes", "Issue invoice")</MudButton> }
+    else if (_row != null && HrUi.Bool(_row["canCancel"]) && Session.Has("sales:invoice"))
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Cancel">@T("İptal et", "Cancel")</MudButton>
+        <MudButton Variant="Variant.Outlined" Href="@($"/sales/returns/new?invoiceId={Id}")">@T("İade", "Return")</MudButton>
+    }
+    else if (_row != null && _row["status"]?.ToString() == "ISSUED")
+    {
+        <MudButton Variant="Variant.Outlined" Href="@($"/sales/returns/new?invoiceId={Id}")">@T("İade", "Return")</MudButton>
+    }
+</div>
+
+@if (!IsNew)
+{
+    @if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+    else
+    {
+        <MudText Class="mb-2">@_row["partnerTitle"]
+            @if (_row["orderId"] != null) { <span> · <MudLink Href="@($"/sales/orders/{_row["orderId"]}")">@_row["orderNumber"]</MudLink></span> }
+            · @AssetUi.Day(_row["invoiceDate"]) → @AssetUi.Day(_row["dueDate"])</MudText>
+        <DocumentLines Lines="_lines" Editable="false" Currency="@(_row["currencyCode"]?.ToString())" />
+        <MudText Class="mt-2">@T("Tahsil edilen", "Collected"): @Fmt.Money(AssetUi.Dec(_row["paidAmount"]), _row["currencyCode"]?.ToString(), Locale)
+            · @T("Açık", "Open"): <b>@Fmt.Money(AssetUi.Dec(_row["openAmount"]), _row["currencyCode"]?.ToString(), Locale)</b></MudText>
+    }
+}
+else
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="4"><RefPicker Resource="business-partners" @bind-Value="_partner" Label="@T("Müşteri", "Customer")" Required="true" Filters="_customers" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" Value="@_orderId" ValueChanged="LoadOrder" Label="@T("Sipariş", "Order")" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                @foreach (var o in _open) { <MudSelectItem T="string" Value='@o["id"]!.ToString()'>@o["number"] · @o["partnerTitle"]</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_due" Label="@T("Vade", "Due")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+    </MudGrid>
+    <DocumentLines Lines="_lines" IncludeServices="true" Currency="@_currency" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private static readonly Dictionary<string, string> _customers = new() { ["type__in"] = "CUSTOMER,BOTH" };
+    private bool IsNew => Id == Guid.Empty;
+    private JsonObject? _row;
+    private List<JsonObject> _open = [];
+    private List<DocLine> _lines = [new()];
+    private string? _partner;
+    private string? _orderId;
+    private string _currency = "TRY";
+    private DateTime? _date = DateTime.Today;
+    private DateTime? _due;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!IsNew)
+        {
+            await Run(async () => _row = await Api.GetJsonAsync($"/api/sales/invoices/{Id}"));
+            if (_row != null) _lines = _row["lines"]!.AsArray().Select(n => DocLine.From(n!.AsObject())).ToList();
+            return;
+        }
+        await Run(async () => _open = await Api.GetAsync<List<JsonObject>>("/api/sales/orders/open") ?? []);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("orderId", out var id)) await LoadOrder(id.ToString());
+    }
+
+    private async Task LoadOrder(string? id)
+    {
+        _orderId = id;
+        if (string.IsNullOrEmpty(id)) return;
+        JsonObject? order = null;
+        await Run(async () => order = await Api.GetJsonAsync($"/api/sales/orders/{id}"));
+        if (order == null) return;
+        _partner = order["partnerId"]?.ToString();
+        _currency = order["currencyCode"]?.ToString() ?? "TRY";
+        _lines = order["lines"]!.AsArray().Select(n => n!.AsObject()).Where(l => AssetUi.Dec(l["invoiceableQty"]) > 0).Select(l =>
+        {
+            var line = DocLine.From(l);
+            line.OrderLineId = l["id"]?.ToString();
+            line.Quantity = AssetUi.Dec(l["invoiceableQty"]);
+            line.MaxQuantity = line.Quantity;
+            return line;
+        }).ToList();
+        if (_lines.Count == 0) _lines = [new()];
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/sales/invoices", new
+        {
+            partnerId = _partner, orderId = string.IsNullOrEmpty(_orderId) ? null : _orderId, invoiceDate = AssetUi.Iso(_date),
+            dueDate = _due == null ? null : AssetUi.Iso(_due), currencyCode = _currency,
+            lines = _lines.Where(l => l.Quantity > 0 && (l.VariantId != null || l.OrderLineId != null)).Select(l => l.ToApi()),
+        }), T("Fatura kesildi", "Invoice issued"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/sales/invoices/{created["id"]}");
+    }
+
+    private async Task Cancel()
+    {
+        var reason = await PromptDialog.AskAsync(Dialogs, T("Faturayı iptal et", "Cancel invoice"), T("Gerekçe", "Reason"), message: T("Cari kaydı tersine çevrilir.", "The ledger entry will be reversed."));
+        if (reason == null) return;
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/sales/invoices/{Id}/cancel", new { reason })))
+            _lines = _row!["lines"]!.AsArray().Select(n => DocLine.From(n!.AsObject())).ToList();
+    }
+}

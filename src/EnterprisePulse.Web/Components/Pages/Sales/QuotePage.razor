@@ -1,0 +1,80 @@
+@page "/sales/quotes/new"
+@page "/sales/quotes/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Satış teklifi", "Sales quote") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/sales-quotes" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@(IsNew ? T("Yeni satış teklifi", "New sales quote") : _row?["number"]?.ToString())</MudText>
+            @if (_row != null) { <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("SalesQuoteStatus", Status, Locale)</MudChip> }
+        </MudStack>
+    </div>
+    @if (IsNew) { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@L("save")</MudButton> }
+    else if (_row != null && Status == "OPEN" && Session.Has("sales:create"))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Accept">@T("Kabul et", "Accept")</MudButton>
+    }
+</div>
+
+@if (IsNew)
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="4"><RefPicker Resource="business-partners" @bind-Value="_partner" Label="@T("Müşteri", "Customer")" Required="true" Filters="_customers" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_valid" Label="@T("Geçerlilik", "Valid until")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+        <MudItem xs="4" sm="2"><MudTextField @bind-Value="_currency" Label="@T("Para birimi", "Currency")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+    <DocumentLines Lines="_lines" IncludeServices="true" Currency="@_currency" />
+}
+else if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-2">@_row["partnerTitle"] · @_row["currencyCode"] · @AssetUi.Day(_row["quoteDate"])</MudText>
+    @if (_row["orderId"] != null) { <MudLink Href="@($"/sales/orders/{_row["orderId"]}")">@T("Sipariş", "Order") @_row["orderNumber"]</MudLink> }
+    <DocumentLines Lines="_lines" Editable="false" Currency="@(_row["currencyCode"]?.ToString())" />
+    <MudText Class="mt-2"><b>@Fmt.Money(AssetUi.Dec(_row["totals"]?["grandTotal"]), _row["currencyCode"]?.ToString(), Locale)</b></MudText>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private static readonly Dictionary<string, string> _customers = new() { ["type__in"] = "CUSTOMER,BOTH" };
+    private bool IsNew => Id == Guid.Empty;
+    private JsonObject? _row;
+    private string? Status => _row?["status"]?.ToString();
+    private string? _partner;
+    private DateTime? _date = DateTime.Today;
+    private DateTime? _valid;
+    private string _currency = "TRY";
+    private string? _notes;
+    private List<DocLine> _lines = [new()];
+    private bool _busy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew) return;
+        await Run(async () => _row = await Api.GetJsonAsync($"/api/sales/quotes/{Id}"));
+        if (_row != null) _lines = _row["lines"]!.AsArray().Select(n => DocLine.From(n!.AsObject())).ToList();
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/sales/quotes", new
+        {
+            partnerId = _partner, quoteDate = AssetUi.Iso(_date), validUntil = _valid == null ? null : AssetUi.Iso(_valid), currencyCode = _currency, notes = _notes,
+            lines = _lines.Where(l => l.VariantId != null || !string.IsNullOrWhiteSpace(l.Description)).Select(l => l.ToApi()),
+        }), L("saved"));
+        _busy = false;
+        if (ok && created != null) Nav.NavigateTo($"/sales/quotes/{created["id"]}");
+    }
+
+    private async Task Accept()
+    {
+        await Dialogs.ShowAsync<AcceptSalesQuoteDialog>(null, new DialogParameters<AcceptSalesQuoteDialog> { { x => x.QuoteId, Id.ToString() } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+    }
+}

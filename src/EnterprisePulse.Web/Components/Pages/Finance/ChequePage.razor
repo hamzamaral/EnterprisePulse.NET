@@ -1,0 +1,80 @@
+@page "/finance/cheques/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Çek / senet", "Cheque / note") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/cheques" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@_row?["number"]?.ToString()</MudText>
+            @if (_row != null) { <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("ChequeStatus", Status, Locale)</MudChip> }
+        </MudStack>
+    </div>
+    @if (_row != null && Session.Has("finance:update"))
+    {
+        @if (Status == "PORTFOLIO")
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Deposit">@T("Bankaya ver", "Deposit")</MudButton>
+        }
+        @if (Status == "DEPOSITED")
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Bounce">@T("Karşılıksız", "Bounce")</MudButton>
+        }
+    }
+    @if (_row != null && Session.Has("finance:approve"))
+    {
+        @if (Status == "DEPOSITED") { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Collect">@T("Tahsil et", "Collect")</MudButton> }
+        @if (Status == "ISSUED") { <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Pay">@T("Öde", "Pay")</MudButton> }
+    }
+</div>
+
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText>@_row["partnerTitle"] · @_row["serialNo"] · @_row["bankName"] · @T("Vade", "Due") @AssetUi.Day(_row["dueDate"])</MudText>
+    <MudText Class="mt-2"><b>@Fmt.Money(AssetUi.Dec(_row["amount"]), _row["currencyCode"]?.ToString(), Locale)</b></MudText>
+    @if (Status == "PORTFOLIO")
+    {
+        <div class="mt-3" style="max-width:360px"><RefPicker Resource="treasury-accounts" @bind-Value="_account" Label="@T("Banka hesabı", "Bank account")" /></div>
+    }
+    <MudTable Items='@_row["events"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mt-3">
+        <HeaderContent><MudTh>@T("Tarih", "Date")</MudTh><MudTh>@T("Durum", "Status")</MudTh><MudTh>@T("Not", "Note")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@AssetUi.Day(context["eventDate"])</MudTd>
+            <MudTd>@Meta.EnumLabel("ChequeStatus", context["toStatus"]?.ToString(), Locale)</MudTd>
+            <MudTd>@context["note"]</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private string? Status => _row?["status"]?.ToString();
+    private string? _account;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load() => await Run(async () => _row = await Api.GetJsonAsync($"/api/finance/cheques/{Id}"));
+
+    private async Task Deposit()
+    {
+        if (string.IsNullOrEmpty(_account)) return;
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/finance/cheques/{Id}/deposit", new { accountId = _account }), T("Bankaya verildi", "Deposited"))) await Load();
+    }
+
+    private async Task Collect()
+    {
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/finance/cheques/{Id}/collect", new { }), T("Tahsil edildi", "Collected"))) await Load();
+    }
+
+    private async Task Bounce()
+    {
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/finance/cheques/{Id}/bounce", new { note = "Karşılıksız" }))) await Load();
+    }
+
+    private async Task Pay()
+    {
+        if (await Run(async () => _row = await Api.PostAsync<JsonObject>($"/api/finance/cheques/{Id}/pay", new { }), T("Ödendi", "Paid"))) await Load();
+    }
+}

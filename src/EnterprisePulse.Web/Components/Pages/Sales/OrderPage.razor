@@ -1,0 +1,150 @@
+@page "/sales/orders/new"
+@page "/sales/orders/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Satış siparişi", "Sales order") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/sales-orders" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@(IsNew ? T("Yeni satış siparişi", "New sales order") : _order?["number"]?.ToString())</MudText>
+            @if (!IsNew && _order != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("SalesOrderStatus", Status, Locale)</MudChip>
+                <MudText Typo="Typo.body2">%@HrUi.Int(_order["deliveredPercent"])</MudText>
+            }
+        </MudStack>
+    </div>
+    @if (Editing)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@L("save")</MudButton>
+    }
+    else if (_order != null)
+    {
+        @if (Status == "DRAFT" && Session.Has("sales:approve"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Approve">@T("Onayla", "Approve")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canDeliver"]) && Session.Has("sales:deliver"))
+        {
+            <MudButton Variant="Variant.Outlined" Href="@($"/sales/deliveries/new?orderId={Id}")">@T("Sevk et", "Deliver")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canInvoice"]) && Session.Has("sales:invoice"))
+        {
+            <MudButton Variant="Variant.Outlined" Href="@($"/sales/invoices/new?orderId={Id}")">@T("Fatura", "Invoice")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canEdit"]) && Session.Has("sales:update"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="() => _editing = true">@L("edit")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canCancel"]) && Session.Has("sales:update"))
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Cancel">@T("İptal", "Cancel")</MudButton>
+        }
+    }
+</div>
+
+@if (_order == null && !IsNew) { <MudProgressLinear Indeterminate="true" /> }
+else if (Editing)
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="4"><RefPicker Resource="business-partners" @bind-Value="_partner" Label="@T("Müşteri", "Customer")" Required="true" Disabled="!IsNew" Filters="_customers" /></MudItem>
+        <MudItem xs="12" sm="4"><RefPicker Resource="warehouses" @bind-Value="_warehouse" Label="@T("Sevk deposu", "Shipping warehouse")" Required="true" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_date" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_delivery" Label="@T("Teslim", "Delivery")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+        <MudItem xs="6" sm="3"><MudTextField @bind-Value="_customerRef" Label="@T("Müşteri referansı", "Customer ref")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="4" sm="2"><MudTextField @bind-Value="_currency" Label="@T("Para birimi", "Currency")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+    <DocumentLines Lines="_lines" IncludeServices="true" Currency="@_currency" />
+}
+else if (_order != null)
+{
+    <MudText Class="mb-2">@_order["partnerTitle"] · @_order["warehouseName"] · @_order["currencyCode"]</MudText>
+    <DocumentLines Lines="_lines" Editable="false" Currency="@(_order["currencyCode"]?.ToString())" />
+    <MudText Class="mt-2 mb-3">@T("Genel toplam (baz)", "Grand total (base)"): <b>@Fmt.Money(AssetUi.Dec(_order["totals"]?["grandTotalBase"]), Session.Company?.BaseCurrency, Locale)</b></MudText>
+    <MudTable Items='@_order["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent><MudTh>SKU</MudTh><MudTh Style="text-align:right">@T("Sipariş", "Ordered")</MudTh><MudTh Style="text-align:right">@T("Sevk", "Delivered")</MudTh><MudTh Style="text-align:right">@T("Fatura", "Invoiced")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd class="ep-mono">@context["sku"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###")</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["deliveredQty"]).ToString("0.###")</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["invoicedQty"]).ToString("0.###")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private static readonly Dictionary<string, string> _customers = new() { ["type__in"] = "CUSTOMER,BOTH" };
+    private bool IsNew => Id == Guid.Empty;
+    private bool _editing;
+    private bool Editing => IsNew || _editing;
+    private JsonObject? _order;
+    private string? Status => _order?["status"]?.ToString();
+    private string? _partner;
+    private string? _warehouse;
+    private DateTime? _date = DateTime.Today;
+    private DateTime? _delivery;
+    private string? _customerRef;
+    private string _currency = "TRY";
+    private string? _notes;
+    private List<DocLine> _lines = [new()];
+    private bool _busy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew) return;
+        _editing = false;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        await Run(async () => _order = await Api.GetJsonAsync($"/api/sales/orders/{Id}"));
+        if (_order == null) return;
+        _partner = _order["partnerId"]?.ToString();
+        _warehouse = _order["warehouseId"]?.ToString();
+        _currency = _order["currencyCode"]?.ToString() ?? "TRY";
+        _notes = _order["notes"]?.ToString();
+        _customerRef = _order["customerRef"]?.ToString();
+        _date = DateTime.TryParse(_order["orderDate"]?.ToString(), out var d) ? d : DateTime.Today;
+        _delivery = DateTime.TryParse(_order["deliveryDate"]?.ToString(), out var e) ? e : null;
+        _lines = _order["lines"]!.AsArray().Select(n => DocLine.From(n!.AsObject())).ToList();
+    }
+
+    private object Body() => new
+    {
+        partnerId = _partner, warehouseId = _warehouse, orderDate = AssetUi.Iso(_date), deliveryDate = _delivery == null ? null : AssetUi.Iso(_delivery),
+        customerRef = _customerRef, currencyCode = _currency, notes = _notes,
+        lines = _lines.Where(l => l.VariantId != null).Select(l => l.ToApi()),
+    };
+
+    private async Task Save()
+    {
+        _busy = true;
+        if (IsNew)
+        {
+            JsonObject? created = null;
+            var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/sales/orders", Body()), L("saved"));
+            _busy = false;
+            if (ok && created != null) Nav.NavigateTo($"/sales/orders/{created["id"]}");
+            return;
+        }
+        var updated = await Run(async () => _order = await Api.PutAsync<JsonObject>($"/api/sales/orders/{Id}", Body()), L("saved"));
+        _busy = false;
+        if (updated) { _editing = false; await Load(); }
+    }
+
+    private async Task Approve()
+    {
+        if (await Run(async () => _order = await Api.PostAsync<JsonObject>($"/api/sales/orders/{Id}/approve"), T("Sipariş onaylandı, stok ayrıldı", "Order approved, stock reserved"))) await Load();
+    }
+
+    private async Task Cancel()
+    {
+        var reason = await PromptDialog.AskAsync(Dialogs, T("Siparişi iptal et", "Cancel order"), T("Gerekçe", "Reason"), message: T("Rezervasyonlar serbest kalır.", "Reservations will be released."));
+        if (reason == null) return;
+        if (await Run(async () => _order = await Api.PostAsync<JsonObject>($"/api/sales/orders/{Id}/cancel", new { reason }))) await Load();
+    }
+}

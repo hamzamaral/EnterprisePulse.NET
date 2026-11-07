@@ -138,21 +138,18 @@ public static class Features
 {
     public static readonly HashSet<string> Groups =
     [
-        "Genel", "İnsan Kaynakları", "Zimmet ve Demirbaş", "Stok ve Depo", "Satın Alma", "Cari ve Finans", "Onay Süreçleri", "Organizasyon", "Sistem",
+        "Genel", "İnsan Kaynakları", "Zimmet ve Demirbaş", "Stok ve Depo", "Satın Alma", "Satış", "Cari ve Finans", "Onay Süreçleri", "Organizasyon", "Sistem",
     ];
 
     public static readonly HashSet<string> Pages =
     [
         "", "workflow/inbox", "roles", "settings",
         "hr/my-leave", "hr/my-attendance", "hr/org-chart", "hr/timesheet",
-        "assets/my", "inventory",
+        "assets/my", "inventory", "finance/aging",
     ];
 
     /// <summary>Resources of a live group that belong to a later phase.</summary>
-    public static readonly HashSet<string> Later =
-    [
-        "treasury-accounts", "partner-payments", "cheques",
-    ];
+    public static readonly HashSet<string> Later = [];
 
     public static bool Enabled(NavGroupMeta g) => Groups.Contains(g.Label.Tr);
     public static bool Enabled(NavItemMeta i) => i.Resource != null ? !Later.Contains(i.Resource) : Pages.Contains(i.Page ?? "");
