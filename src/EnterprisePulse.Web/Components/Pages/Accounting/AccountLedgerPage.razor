@@ -1,0 +1,54 @@
+@page "/accounting/accounts/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Hesap ekstresi", "Account ledger") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/ledger-accounts" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@(_data == null ? "…" : $"{_data["account"]!["code"]} {_data["account"]!["name"]}")</MudText>
+</div>
+<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudDatePicker @bind-Date="_from" Label="@T("Başlangıç", "From")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" />
+    <MudDatePicker @bind-Date="_to" Label="@T("Bitiş", "To")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Load">@T("Getir", "Show")</MudButton>
+</MudStack>
+@if (_data == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-2">@T("Devir", "Opening"): <b>@Fmt.Money(AssetUi.Dec(_data["opening"]), null, Locale)</b></MudText>
+    <MudTable Items='@_data["rows"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Tarih", "Date")</MudTh><MudTh>@T("Fiş", "Entry")</MudTh><MudTh>@T("Açıklama", "Description")</MudTh>
+            <MudTh Style="text-align:right">@T("Borç", "Debit")</MudTh><MudTh Style="text-align:right">@T("Alacak", "Credit")</MudTh><MudTh Style="text-align:right">@T("Bakiye", "Balance")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@AssetUi.Day(context["entryDate"])</MudTd>
+            <MudTd><MudLink Href="@($"/accounting/journal/{context["entryId"]}")">@context["entryNumber"]</MudLink></MudTd>
+            <MudTd>@(context["lineDescription"]?.ToString() ?? context["description"]?.ToString()) @(context["partnerName"] == null ? "" : "· " + context["partnerName"])</MudTd>
+            <MudTd Style="text-align:right">@(AssetUi.Dec(context["debit"]) == 0 ? "" : Fmt.Money(AssetUi.Dec(context["debit"]), null, Locale))</MudTd>
+            <MudTd Style="text-align:right">@(AssetUi.Dec(context["credit"]) == 0 ? "" : Fmt.Money(AssetUi.Dec(context["credit"]), null, Locale))</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["balance"]), null, Locale)</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>@L("noRecords")</NoRecordsContent>
+    </MudTable>
+    <MudText Class="mt-2">
+        @L("total"): @Fmt.Money(AssetUi.Dec(_data["totalDebit"]), null, Locale) / @Fmt.Money(AssetUi.Dec(_data["totalCredit"]), null, Locale)
+        · @T("Kapanış", "Closing"): <b>@Fmt.Money(AssetUi.Dec(_data["closing"]), null, Locale)</b>
+    </MudText>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _data;
+    private DateTime? _from;
+    private DateTime? _to;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var q = new List<string>();
+        if (_from != null) q.Add($"from={AssetUi.Iso(_from)}");
+        if (_to != null) q.Add($"to={AssetUi.Iso(_to)}");
+        await Run(async () => _data = await Api.GetJsonAsync($"/api/ledger-accounts/{Id}/ledger" + (q.Count > 0 ? "?" + string.Join("&", q) : "")));
+    }
+}

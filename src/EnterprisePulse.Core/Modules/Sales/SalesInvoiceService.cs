@@ -102,6 +102,16 @@ public sealed class SalesInvoiceService(AppDbContext db, NumberingService number
         var invoice = Guard.Found(await db.SalesInvoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id), "Satış faturası bulunamadı");
         Guard.State(invoice.Status == InvoiceStatus.ISSUED, "Fatura zaten iptal edilmiş");
         Guard.State(invoice.PaidAmount == 0, "Faturanın tahsilatı veya iadesi var; önce onu kaldırın");
+        var einvoice = await db.EInvoices.FirstOrDefaultAsync(e => e.SalesInvoiceId == id);
+        var check = Einvoice.EInvoiceRules.SalesCancelCheck(einvoice?.Profile, einvoice?.Status);
+        Guard.State(check.Allowed, check.Reason ?? "Fatura iptal edilemez");
+        if (einvoice != null && check.CancelEInvoice)
+        {
+            einvoice.Status = EInvoiceStatus.CANCELLED;
+            einvoice.StatusCode = "IPTAL";
+            einvoice.StatusMessage = "e-Arşiv faturası iptal edildi (iptal raporuna eklendi)";
+            db.EInvoiceEvents.Add(new EInvoiceEvent { EInvoiceId = einvoice.Id, Status = EInvoiceStatus.CANCELLED, Code = "IPTAL", Message = einvoice.StatusMessage, UserId = db.User.UserId });
+        }
         var lineIds = invoice.Lines.Where(l => l.OrderLineId != null).Select(l => l.OrderLineId!.Value).ToList();
         var orderLines = await db.SalesOrderLines.Where(l => lineIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id);
         foreach (var line in invoice.Lines.Where(l => l.OrderLineId != null)) orderLines[line.OrderLineId!.Value].InvoicedQty -= line.Quantity;

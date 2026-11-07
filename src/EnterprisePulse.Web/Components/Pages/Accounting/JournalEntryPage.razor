@@ -1,0 +1,197 @@
+@page "/accounting/journal/new"
+@page "/accounting/journal/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Yevmiye fişi", "Journal entry") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/journal-entries" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@(IsNew ? T("Yeni yevmiye fişi", "New journal entry") : _entry?["number"]?.ToString())</MudText>
+            @if (!IsNew && _entry != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("JournalEntryStatus", Status, Locale)</MudChip>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@Meta.EnumLabel("JournalSource", _entry["source"]?.ToString(), Locale)</MudChip>
+                @if (HrUi.Bool(_entry["isReversed"])) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@T("Ters kaydedildi", "Reversed")</MudChip> }
+            }
+        </MudStack>
+    </div>
+    @if (Editing)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || !Balanced">@L("save")</MudButton>
+    }
+    else if (_entry != null)
+    {
+        @if (HrUi.Bool(_entry["canPost"]) && Session.Has("accounting:approve"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Post" Disabled="_busy">@T("Kesinleştir", "Post")</MudButton>
+        }
+        @if (HrUi.Bool(_entry["canEdit"]) && Session.Has("accounting:update"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="() => _editing = true">@L("edit")</MudButton>
+        }
+        @if (HrUi.Bool(_entry["canReverse"]) && Session.Has("accounting:approve"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="Reverse" Disabled="_busy">@T("Ters kayıt", "Reverse")</MudButton>
+        }
+        @if (HrUi.Bool(_entry["canDelete"]) && Session.Has("accounting:update"))
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Remove" Disabled="_busy">@L("delete")</MudButton>
+        }
+    }
+</div>
+
+@if (_entry == null && !IsNew) { <MudProgressLinear Indeterminate="true" /> }
+else if (Editing)
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_date" Label="@T("Fiş tarihi", "Entry date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Required="true" /></MudItem>
+        <MudItem xs="12" sm="9"><MudTextField @bind-Value="_description" Label="@T("Açıklama", "Description")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" /></MudItem>
+    </MudGrid>
+    <MudTable Items="_lines" Dense="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.Sm">
+        <HeaderContent>
+            <MudTh style="min-width:260px">@T("Hesap", "Account")</MudTh><MudTh>@T("Açıklama", "Description")</MudTh>
+            <MudTh Style="text-align:right">@T("Borç", "Debit")</MudTh><MudTh Style="text-align:right">@T("Alacak", "Credit")</MudTh><MudTh />
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><RefPicker Resource="ledger-accounts" @bind-Value="context.AccountId" InitialLabel="@context.AccountLabel" /></MudTd>
+            <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Variant="Variant.Text" /></MudTd>
+            <MudTd Style="text-align:right"><MudNumericField T="decimal" @bind-Value="context.Debit" Margin="Margin.Dense" Variant="Variant.Text" Min="0m" /></MudTd>
+            <MudTd Style="text-align:right"><MudNumericField T="decimal" @bind-Value="context.Credit" Margin="Margin.Dense" Variant="Variant.Text" Min="0m" /></MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => _lines.Remove(context)" Disabled="_lines.Count <= 2" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Class="mt-2">
+        <MudButton Size="Size.Small" OnClick="() => _lines.Add(new())">@L("add")</MudButton>
+        <MudText>@T("Borç", "Debit"): <b>@Fmt.Money(_lines.Sum(l => l.Debit), null, Locale)</b></MudText>
+        <MudText>@T("Alacak", "Credit"): <b>@Fmt.Money(_lines.Sum(l => l.Credit), null, Locale)</b></MudText>
+        @if (!Balanced) { <MudText Color="Color.Error">@T("Borç ve alacak toplamları eşit olmalı", "Debit and credit must balance")</MudText> }
+    </MudStack>
+}
+else if (_entry != null)
+{
+    <MudText Class="mb-1">@AssetUi.Day(_entry["entryDate"]) · @_entry["description"]</MudText>
+    @if (_entry["sourceNumber"] != null)
+    {
+        <MudText Class="mb-1">@T("Kaynak belge", "Source document"): <span class="ep-mono">@_entry["sourceNumber"]</span></MudText>
+    }
+    @if (_entry["reverses"] is JsonObject rv)
+    {
+        <MudText Class="mb-1">@T("Ters kaydı yapılan fiş", "Reverses"): <MudLink Href="@($"/accounting/journal/{rv["id"]}")">@rv["number"]</MudLink></MudText>
+    }
+    @if (_entry["reversal"] is JsonObject rl)
+    {
+        <MudText Class="mb-1">@T("Ters kayıt fişi", "Reversed by"): <MudLink Href="@($"/accounting/journal/{rl["id"]}")">@rl["number"]</MudLink></MudText>
+    }
+    <MudTable Items='@_entry["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>@T("Hesap", "Account")</MudTh><MudTh>@T("Cari / personel", "Partner / employee")</MudTh><MudTh>@T("Açıklama", "Description")</MudTh>
+            <MudTh Style="text-align:right">@T("Borç", "Debit")</MudTh><MudTh Style="text-align:right">@T("Alacak", "Credit")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><MudLink Href="@($"/accounting/accounts/{context["accountId"]}")"><span class="ep-mono">@context["accountCode"]</span> @context["accountName"]</MudLink></MudTd>
+            <MudTd>@(context["partnerName"]?.ToString() ?? context["employeeName"]?.ToString())</MudTd>
+            <MudTd>@context["description"]</MudTd>
+            <MudTd Style="text-align:right">@(AssetUi.Dec(context["debit"]) == 0 ? "" : Fmt.Money(AssetUi.Dec(context["debit"]), null, Locale))</MudTd>
+            <MudTd Style="text-align:right">@(AssetUi.Dec(context["credit"]) == 0 ? "" : Fmt.Money(AssetUi.Dec(context["credit"]), null, Locale))</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private sealed class EntryLine
+    {
+        public string? AccountId { get; set; }
+        public string? AccountLabel { get; set; }
+        public string? Description { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public string? PartnerId { get; set; }
+        public string? EmployeeId { get; set; }
+    }
+
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+    private bool _editing;
+    private bool Editing => IsNew || _editing;
+    private JsonObject? _entry;
+    private string? Status => _entry?["status"]?.ToString();
+    private DateTime? _date = DateTime.Today;
+    private string _description = "";
+    private List<EntryLine> _lines = [new(), new()];
+    private bool _busy;
+
+    private bool Balanced => _lines.Sum(l => l.Debit) == _lines.Sum(l => l.Credit) && _lines.Sum(l => l.Debit) > 0 && _lines.All(l => l.AccountId != null || l.Debit + l.Credit == 0);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew) return;
+        _editing = false;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        await Run(async () => _entry = await Api.GetJsonAsync($"/api/journal-entries/{Id}"));
+        if (_entry == null) return;
+        _date = DateTime.TryParse(_entry["entryDate"]?.ToString(), out var d) ? d : DateTime.Today;
+        _description = _entry["description"]?.ToString() ?? "";
+        _lines = _entry["lines"]!.AsArray().Select(n => n!.AsObject()).Select(l => new EntryLine
+        {
+            AccountId = l["accountId"]?.ToString(), AccountLabel = $"{l["accountCode"]} {l["accountName"]}", Description = l["description"]?.ToString(),
+            Debit = AssetUi.Dec(l["debit"]), Credit = AssetUi.Dec(l["credit"]), PartnerId = l["partnerId"]?.ToString(), EmployeeId = l["employeeId"]?.ToString(),
+        }).ToList();
+    }
+
+    private object Body() => new
+    {
+        entryDate = AssetUi.Iso(_date), description = _description,
+        lines = _lines.Where(l => l.AccountId != null).Select(l => new
+        {
+            accountId = l.AccountId, partnerId = l.PartnerId, employeeId = l.EmployeeId, description = string.IsNullOrWhiteSpace(l.Description) ? null : l.Description, debit = l.Debit, credit = l.Credit,
+        }),
+    };
+
+    private async Task Save()
+    {
+        _busy = true;
+        if (IsNew)
+        {
+            JsonObject? created = null;
+            var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/journal-entries", Body()), L("saved"));
+            _busy = false;
+            if (ok && created != null) Nav.NavigateTo($"/accounting/journal/{created["id"]}");
+            return;
+        }
+        var updated = await Run(async () => await Api.PatchAsync<JsonObject>($"/api/journal-entries/{Id}", Body()), L("saved"));
+        _busy = false;
+        if (updated) { _editing = false; await Load(); }
+    }
+
+    private async Task Post()
+    {
+        if (!await Confirm(T("Fiş kesinleştirilecek; sonrasında düzenlenemez.", "The entry will be posted and can no longer be edited."))) return;
+        _busy = true;
+        if (await Run(() => Api.PostAsync($"/api/journal-entries/{Id}/post"), L("saved"))) await Load();
+        _busy = false;
+    }
+
+    private async Task Reverse()
+    {
+        var note = await PromptDialog.AskAsync(Dialogs, T("Ters kayıt", "Reverse entry"), T("Not (isteğe bağlı)", "Note (optional)"));
+        if (note == null) return;
+        _busy = true;
+        JsonObject? reversal = null;
+        if (await Run(async () => reversal = await Api.PostAsync<JsonObject>($"/api/journal-entries/{Id}/reverse", new { date = AssetUi.Today, note = string.IsNullOrWhiteSpace(note) ? null : note }), L("saved")))
+            Nav.NavigateTo($"/accounting/journal/{reversal!["id"]}");
+        _busy = false;
+    }
+
+    private async Task Remove()
+    {
+        if (!await Confirm(L("confirmDelete"))) return;
+        _busy = true;
+        if (await Run(() => Api.DeleteAsync($"/api/journal-entries/{Id}"), L("deleted"))) Nav.NavigateTo("/r/journal-entries");
+        _busy = false;
+    }
+}

@@ -1,0 +1,29 @@
+@inherits AppPage
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@T("Yeni hesap", "New account")</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@T("Kod 3 haneli ana hesapla başlar (örn. 120.01); ana hesap sınıfı bakiye türünü belirler.", "The code starts with a 3-digit main account (e.g. 120.01); the main account sets the type.")</MudText>
+        <MudTextField @bind-Value="_code" Label="@T("Hesap kodu", "Account code")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" Class="mb-2" />
+        <MudTextField @bind-Value="_name" Label="@T("Hesap adı", "Account name")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">@L("cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name)">@L("save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    private string _code = "";
+    private string _name = "";
+    private bool _busy;
+
+    private async Task Save()
+    {
+        _busy = true;
+        var ok = await Run(() => Api.PostAsync<JsonObject>("/api/ledger-accounts", new { code = _code.Trim(), name = _name.Trim() }), L("saved"));
+        _busy = false;
+        if (ok) MudDialog.Close(DialogResult.Ok(true));
+    }
+}

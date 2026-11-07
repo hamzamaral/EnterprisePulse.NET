@@ -1,0 +1,131 @@
+@page "/accounting"
+@inherits AppPage
+
+<PageTitle>@T("Muhasebe", "Accounting") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Muhasebe", "Accounting")</MudText>
+    <MudButton Variant="Variant.Outlined" Href="/r/journal-entries">@T("Yevmiye defteri", "Journal")</MudButton>
+    <MudButton Variant="Variant.Outlined" Href="/r/ledger-accounts">@T("Hesap planı", "Chart of accounts")</MudButton>
+    @if (Session.Has("accounting:update"))
+    {
+        <MudButton Variant="Variant.Outlined" Href="/accounting/journal/new">@T("Yeni fiş", "New entry")</MudButton>
+    }
+</div>
+@if (_summary == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    var cur = _summary["currencyCode"]?.ToString();
+    @if (!HrUi.Bool(_summary["chartInstalled"]))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3">
+            @T("Hesap planı kurulu değil.", "The chart of accounts is not installed.")
+            @if (Session.Has("accounting:update"))
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Filled" OnClick="Install" Class="ml-2">@T("Tekdüzen hesap planını kur", "Install standard chart")</MudButton>
+            }
+        </MudAlert>
+    }
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@T("Kasa ve banka", "Cash and bank")</MudText><MudText Typo="Typo.h6">@Fmt.Money(AssetUi.Dec(_summary["cash"]), cur, Locale)</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@T("Alacaklar", "Receivables")</MudText><MudText Typo="Typo.h6">@Fmt.Money(AssetUi.Dec(_summary["receivables"]), cur, Locale)</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@T("Borçlar", "Payables")</MudText><MudText Typo="Typo.h6">@Fmt.Money(AssetUi.Dec(_summary["payables"]), cur, Locale)</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@_summary["year"] @T("net kâr", "net profit")</MudText><MudText Typo="Typo.h6">@Fmt.Money(AssetUi.Dec(_summary["netProfit"]), cur, Locale)</MudText></MudPaper></MudItem>
+    </MudGrid>
+
+    <MudTable Items='@_summary["months"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>@T("Ay", "Month")</MudTh><MudTh Style="text-align:right">@T("Gelir", "Revenue")</MudTh>
+            <MudTh Style="text-align:right">@T("Gider", "Expense")</MudTh><MudTh Style="text-align:right">@T("Sonuç", "Result")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["month"]</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["revenue"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["expense"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["profit"]), null, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+        <MudText Typo="Typo.h6" Class="ep-grow">@T("Muhasebeleşmeyi bekleyen belgeler", "Documents waiting to be posted") (@_pending.Count)</MudText>
+        @if (Session.Has("accounting:approve"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunPosting" Disabled="_busy || _pending.Count == 0">@T("Muhasebeleştir", "Post now")</MudButton>
+        }
+    </MudStack>
+    <MudTable Items="_pending" Dense="true" Elevation="0" Outlined="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>@T("Kaynak", "Source")</MudTh><MudTh>@T("Belge", "Document")</MudTh><MudTh>@T("Tarih", "Date")</MudTh>
+            <MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh><MudTh>@T("İşlem", "Action")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@Meta.EnumLabel("JournalSource", context["source"]?.ToString(), Locale)</MudTd>
+            <MudTd><span class="ep-mono">@context["sourceNumber"]</span> @context["description"]</MudTd>
+            <MudTd>@AssetUi.Day(context["date"])</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["amount"]), null, Locale)</MudTd>
+            <MudTd>@ActionText(context)</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>@L("noRecords")</NoRecordsContent>
+    </MudTable>
+
+    <MudText Typo="Typo.h6" Class="mb-2">@T("Dönem kilidi", "Period lock")</MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudDatePicker @bind-Date="_lockedUntil" Label="@T("Bu tarihe kadar kilitli", "Locked until")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true"
+                       Disabled="@(!Session.Has("accounting:close"))" />
+        @if (Session.Has("accounting:close"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="SaveLock" Disabled="_busy">@L("save")</MudButton>
+        }
+    </MudStack>
+}
+
+@code {
+    private JsonObject? _summary;
+    private List<JsonObject> _pending = [];
+    private DateTime? _lockedUntil;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        await Run(async () =>
+        {
+            _summary = await Api.GetJsonAsync("/api/accounting/summary");
+            _pending = (await Api.GetAsync<List<JsonObject>>("/api/accounting/pending"));
+        });
+        _lockedUntil = DateTime.TryParse(_summary?["lockedUntil"]?.ToString(), out var d) ? d : null;
+    }
+
+    private string ActionText(JsonObject row) => row["action"]?.ToString() switch
+    {
+        "POST" => T("Fiş oluşturulacak", "Entry will be created"),
+        "REVERSE" => T("Fiş ters kaydedilecek", "Entry will be reversed"),
+        "REPOST" => T("Fiş yeniden kaydedilecek", "Entry will be reposted"),
+        var a => a ?? "",
+    } + (HrUi.Bool(row["locked"]) ? " · " + T("dönem kilitli", "period locked") : "");
+
+    private async Task Install()
+    {
+        if (await Run(() => Api.PostAsync("/api/ledger-accounts/install"), L("saved"))) await Load();
+    }
+
+    private async Task RunPosting()
+    {
+        _busy = true;
+        JsonObject? result = null;
+        if (await Run(async () => result = await Api.PostAsync<JsonObject>("/api/accounting/run")))
+        {
+            Snackbar.Add(T($"{result!["posted"]} fiş oluşturuldu, {result["reversed"]} ters kayıt, {result["skipped"]} atlandı",
+                $"{result["posted"]} posted, {result["reversed"]} reversed, {result["skipped"]} skipped"), Severity.Success);
+            await Load();
+        }
+        _busy = false;
+    }
+
+    private async Task SaveLock()
+    {
+        _busy = true;
+        if (await Run(() => Api.PatchAsync<JsonObject>("/api/accounting/settings", new { lockedUntil = _lockedUntil == null ? null : AssetUi.Iso(_lockedUntil) }), L("saved"))) await Load();
+        _busy = false;
+    }
+}

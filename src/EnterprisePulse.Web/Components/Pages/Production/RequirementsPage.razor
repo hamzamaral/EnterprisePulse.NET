@@ -1,0 +1,71 @@
+@page "/production/requirements"
+@inherits AppPage
+
+<PageTitle>@T("Malzeme ihtiyacı", "Material requirements") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("Malzeme ihtiyaç planlaması (MRP)", "Material requirements planning (MRP)")</MudText>
+    <MudButton Variant="Variant.Outlined" Href="/r/work-orders">@T("İş emirleri", "Work orders")</MudButton>
+    <MudButton Variant="Variant.Outlined" Href="/r/bill-of-materials">@T("Ürün ağaçları", "Bills of materials")</MudButton>
+    @if (Session.Has("production:read") && (Session.Has("purchasing:create") || Session.Has("workflow:start")))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateRequest" Disabled="_busy || !Bought.Any()">@T("Eksikler için satın alma talebi", "Purchase request for shortages")</MudButton>
+    }
+</div>
+@if (_rows == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudTable Items="_rows" Dense="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None">
+        <HeaderContent>
+            <MudTh>@T("Ürün", "Item")</MudTh>
+            <MudTh Style="text-align:right">@T("Üretim ihtiyacı", "Production")</MudTh><MudTh Style="text-align:right">@T("Satış ihtiyacı", "Sales")</MudTh>
+            <MudTh Style="text-align:right">@T("Eldeki", "On hand")</MudTh><MudTh Style="text-align:right">@T("Gelecek", "Incoming")</MudTh>
+            <MudTh Style="text-align:right">@T("Eksik", "Shortage")</MudTh><MudTh>@T("İhtiyaç tarihi", "Needed by")</MudTh><MudTh />
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="ep-mono">@context["variant"]!["sku"]</span> @context["variant"]!["productName"]</MudTd>
+            <MudTd Style="text-align:right">@Q(context["productionDemand"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["salesDemand"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["onHand"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["purchaseIncoming"]) + @Q(context["productionIncoming"])</MudTd>
+            <MudTd Style="text-align:right">
+                @if (AssetUi.Dec(context["shortage"]) > 0) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@Q(context["shortage"])</MudChip> }
+                else { <span>0</span> }
+            </MudTd>
+            <MudTd>@AssetUi.Day(context["neededBy"])</MudTd>
+            <MudTd>
+                @if (HrUi.Bool(context["made"]) && AssetUi.Dec(context["shortage"]) > 0 && Session.Has("production:update"))
+                {
+                    <MudButton Size="Size.Small" Href="@($"/production/work-orders/new?bomId={context["defaultBomId"]}&quantity={Q(context["shortage"])}")">@T("İş emri aç", "Create work order")</MudButton>
+                }
+                else if (!HrUi.Bool(context["made"]) && AssetUi.Dec(context["shortage"]) > 0) { <span>@T("Satın alınır", "Bought")</span> }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>@L("noRecords")</NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private List<JsonObject>? _rows;
+    private bool _busy;
+
+    private IEnumerable<JsonObject> Bought => (_rows ?? []).Where(r => !HrUi.Bool(r["made"]) && AssetUi.Dec(r["shortage"]) > 0);
+
+    private string Q(JsonNode? node) => AssetUi.Dec(node).ToString("0.###");
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load() => await Run(async () => _rows = await Api.GetAsync<List<JsonObject>>("/api/production/requirements"));
+
+    private async Task CreateRequest()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        var lines = Bought.Select(r => new { variantId = r["variant"]!["variantId"]!.ToString(), quantity = AssetUi.Dec(r["shortage"]) }).ToList();
+        if (await Run(async () => created = await Api.PostAsync<JsonObject>("/api/production/requirements/purchase-request", new { lines })))
+        {
+            Snackbar.Add(T($"{created!["number"]} numaralı talep oluşturuldu", $"Request {created["number"]} created"), Severity.Success);
+            Nav.NavigateTo($"/r/purchase-requests/{created["id"]}");
+        }
+        _busy = false;
+    }
+}

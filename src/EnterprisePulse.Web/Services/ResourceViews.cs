@@ -92,6 +92,8 @@ public static partial class ResourceViews
         Work();
         People();
         Ops();
+        Accounting();
+        Production();
     }
 
     static void Assets()
@@ -568,6 +570,79 @@ public static partial class ResourceViews
         {
             v.Columns = ["vehicleId", "entryDate", "odometer", "liters", "amount", "consumption"];
             v.FilterFields = ["vehicleId"];
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+    }
+
+    static void Accounting()
+    {
+        Configure("ledger-accounts", v =>
+        {
+            v.Columns = ["code", "name", "type", "level", "isSystem", "isActive"];
+            v.FilterFields = ["type", "isActive", "isSystem"];
+            v.CreateDialog = typeof(Components.Pages.Accounting.LedgerAccountDialog);
+            v.HideEdit = v.HideDelete = true;
+            v.DetailHref = "/accounting/accounts/{id}";
+            v.Links.Add(new HeaderLink("Muhasebe paneli", "Accounting overview", "/accounting", Icons.Material.Filled.Dashboard, "accounting:read"));
+        });
+        Configure("journal-entries", v =>
+        {
+            v.Columns = ["number", "entryDate", "description", "source", "status", "total"];
+            v.FilterFields = ["status", "source", "entryDate"];
+            v.CreateHref = "/accounting/journal/new";
+            v.HideEdit = v.HideDelete = true;
+            v.DetailHref = "/accounting/journal/{id}";
+            v.Links.Add(new HeaderLink("Muhasebe paneli", "Accounting overview", "/accounting", Icons.Material.Filled.Dashboard, "accounting:read"));
+        });
+        Configure("journal-lines", v =>
+        {
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("e-invoices", v =>
+        {
+            v.Columns = ["number", "direction", "profile", "status", "partnerId", "issueDate", "payableAmount", "statusCode"];
+            v.FilterFields = ["direction", "status", "profile", "issueDate"];
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+            v.DetailHref = "/e-invoices/{id}";
+            v.Links.Add(new HeaderLink("e-Fatura paneli", "e-Invoice overview", "/e-invoices", Icons.Material.Filled.Outbox, "einvoice:read"));
+        });
+        Configure("e-invoice-events", v =>
+        {
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+    }
+
+    static void Production()
+    {
+        Configure("bill-of-materials", v =>
+        {
+            v.Columns = ["code", "name", "variantId", "quantity", "laborCost", "overheadCost", "isDefault", "isActive"];
+            v.FilterFields = ["isActive", "isDefault"];
+            v.CreateHref = "/production/boms/new";
+            v.HideEdit = v.HideDelete = true;
+            v.DetailHref = "/production/boms/{id}";
+        });
+        Configure("bom-lines", v =>
+        {
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("work-orders", v =>
+        {
+            v.Columns = ["number", "variantId", "quantity", "producedQty", "status", "plannedStart", "plannedEnd", "sourceWarehouseId"];
+            v.FilterFields = ["status", "plannedStart", "variantId"];
+            v.CreateHref = "/production/work-orders/new";
+            v.HideEdit = v.HideDelete = true;
+            v.DetailHref = "/production/work-orders/{id}";
+            v.Links.Add(new HeaderLink("Malzeme ihtiyacı", "Material requirements", "/production/requirements", Icons.Material.Filled.Inventory, "production:read"));
+        });
+        Configure("work-order-components", v =>
+        {
+            v.HideCreate = v.HideEdit = v.HideDelete = true;
+        });
+        Configure("production-records", v =>
+        {
+            v.Columns = ["number", "workOrderId", "recordDate", "quantity", "materialCost", "laborCost", "overheadCost", "unitCost"];
+            v.FilterFields = ["workOrderId", "recordDate"];
             v.HideCreate = v.HideEdit = v.HideDelete = true;
         });
     }

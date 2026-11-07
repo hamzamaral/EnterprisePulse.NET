@@ -1,0 +1,232 @@
+@page "/production/boms/new"
+@page "/production/boms/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("Ürün ağacı", "Bill of materials") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/bill-of-materials" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@(IsNew ? T("Yeni ürün ağacı", "New bill of materials") : _bom?["code"]?.ToString())</MudText>
+            @if (!IsNew && _bom != null)
+            {
+                @if (HrUi.Bool(_bom["isDefault"])) { <MudChip T="string" Size="Size.Small" Color="Color.Success">@T("Varsayılan", "Default")</MudChip> }
+                @if (!HrUi.Bool(_bom["isActive"])) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@T("Pasif", "Inactive")</MudChip> }
+            }
+        </MudStack>
+    </div>
+    @if (Editing)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@L("save")</MudButton>
+        @if (!IsNew) { <MudButton Variant="Variant.Outlined" OnClick="() => _editing = false">@L("cancel")</MudButton> }
+    }
+    else if (_bom != null)
+    {
+        @if (HrUi.Bool(_bom["isActive"]) && Session.Has("production:update"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"/production/work-orders/new?bomId={Id}")">@T("İş emri aç", "Create work order")</MudButton>
+        }
+        @if (Session.Has("production:update"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="() => _editing = true">@L("edit")</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="ToggleActive" Disabled="_busy">@(HrUi.Bool(_bom["isActive"]) ? T("Pasifleştir", "Deactivate") : T("Etkinleştir", "Activate"))</MudButton>
+            @if (HrUi.Bool(_bom["canDelete"]))
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Remove" Disabled="_busy">@L("delete")</MudButton>
+            }
+        }
+    }
+</div>
+
+@if (_bom == null && !IsNew) { <MudProgressLinear Indeterminate="true" /> }
+else if (Editing)
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="5"><ItemPicker Value="_variantId" InitialLabel="@_variantLabel" Label="@T("Mamul", "Output item")" Required="true" Disabled="!IsNew" ValueChanged="o => _variantId = o?.Id" /></MudItem>
+        <MudItem xs="6" sm="3"><MudTextField @bind-Value="_code" Label="@T("Kod (boşsa otomatik)", "Code (auto if empty)")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="@T("Ad", "Name")" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" /></MudItem>
+        <MudItem xs="4" sm="2"><MudNumericField T="decimal" @bind-Value="_quantity" Label="@T("Parti miktarı", "Batch size")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0.001m" /></MudItem>
+        <MudItem xs="4" sm="2"><MudNumericField T="decimal" @bind-Value="_labor" Label="@T("İşçilik / parti", "Labour / batch")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" /></MudItem>
+        <MudItem xs="4" sm="2"><MudNumericField T="decimal" @bind-Value="_overhead" Label="@T("Genel gider / parti", "Overhead / batch")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" /></MudItem>
+        <MudItem xs="6" sm="3"><MudCheckBox T="bool" @bind-Value="_isDefault" Label="@T("Varsayılan reçete", "Default BOM")" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+    <MudTable Items="_lines" Dense="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.Sm">
+        <HeaderContent>
+            <MudTh style="min-width:280px">@T("Bileşen", "Component")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Quantity")</MudTh>
+            <MudTh Style="text-align:right">@T("Fire %", "Scrap %")</MudTh><MudTh>@T("Not", "Note")</MudTh><MudTh />
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><ItemPicker Value="context.VariantId" InitialLabel="@context.Label" ValueChanged="o => { context.VariantId = o?.Id; context.Label = o?.Label; }" /></MudTd>
+            <MudTd Style="text-align:right"><MudNumericField T="decimal" @bind-Value="context.Quantity" Margin="Margin.Dense" Variant="Variant.Text" Min="0.001m" /></MudTd>
+            <MudTd Style="text-align:right"><MudNumericField T="decimal" @bind-Value="context.Scrap" Margin="Margin.Dense" Variant="Variant.Text" Min="0m" /></MudTd>
+            <MudTd><MudTextField @bind-Value="context.Notes" Margin="Margin.Dense" Variant="Variant.Text" /></MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => _lines.Remove(context)" Disabled="_lines.Count <= 1" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+    <MudButton Size="Size.Small" Class="mt-2" OnClick="() => _lines.Add(new())">@L("add")</MudButton>
+}
+else if (_bom != null)
+{
+    var cur = Session.Company?.BaseCurrency;
+    <MudText Class="mb-1">@_bom["name"] · <span class="ep-mono">@_bom["variant"]!["sku"]</span> @_bom["variant"]!["productName"]</MudText>
+    <MudText Class="mb-1">
+        @T("Parti", "Batch"): @Q(_bom["quantity"]) @_bom["variant"]!["unitCode"]
+        · @T("İşçilik", "Labour"): @Fmt.Money(AssetUi.Dec(_bom["laborCost"]), cur, Locale)
+        · @T("Genel gider", "Overhead"): @Fmt.Money(AssetUi.Dec(_bom["overheadCost"]), cur, Locale)
+    </MudText>
+    <MudText Class="mb-3">
+        @T("Malzeme", "Material"): @Fmt.Money(AssetUi.Dec(_bom["materialCost"]), cur, Locale)
+        · @T("Birim maliyet", "Unit cost"): <b>@Fmt.Money(AssetUi.Dec(_bom["unitCost"]), cur, Locale)</b>
+        · @T("Eldeki stokla üretilebilir", "Buildable from stock"): <b>@Q(_bom["buildable"])</b>
+        · @T("İş emri", "Work orders"): @_bom["workOrderCount"]
+    </MudText>
+    @if (_bom["notes"] != null) { <MudText Class="mb-3">@_bom["notes"]</MudText> }
+    <MudTable Items='@_bom["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>#</MudTh><MudTh>@T("Bileşen", "Component")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Quantity")</MudTh><MudTh Style="text-align:right">@T("Fire %", "Scrap %")</MudTh>
+            <MudTh Style="text-align:right">@T("Birim başına", "Per unit")</MudTh><MudTh Style="text-align:right">@T("Birim maliyet", "Unit cost")</MudTh>
+            <MudTh Style="text-align:right">@T("Tutar", "Cost")</MudTh><MudTh Style="text-align:right">@T("Eldeki", "On hand")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["lineNo"]</MudTd>
+            <MudTd><span class="ep-mono">@context["variant"]!["sku"]</span> @context["variant"]!["productName"] @(HrUi.Bool(context["made"]) ? "· " + T("üretilir", "made") : "")</MudTd>
+            <MudTd Style="text-align:right">@Q(context["quantity"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["scrapRate"])</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["quantityPer"]).ToString("0.######")</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["unitCost"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["lineCost"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Q(context["onHand"])</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudText Typo="Typo.h6" Class="mb-2">@T("Çok seviyeli malzeme planı", "Multi-level material plan")</MudText>
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudNumericField T="decimal" @bind-Value="_planQuantity" Label="@T("Üretilecek miktar", "Quantity to make")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0.001m" Style="max-width:200px" />
+        <MudButton Variant="Variant.Outlined" OnClick="LoadPlan">@T("Planla", "Plan")</MudButton>
+    </MudStack>
+    @if (_plan != null)
+    {
+        <MudTable Items='@_plan["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+            <HeaderContent>
+                <MudTh>@T("Bileşen", "Component")</MudTh><MudTh Style="text-align:right">@T("Gerekli", "Required")</MudTh><MudTh Style="text-align:right">@T("Eldeki", "On hand")</MudTh>
+                <MudTh Style="text-align:right">@T("Eksik", "Shortage")</MudTh><MudTh>@T("Durum", "State")</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><span style="padding-left:@(HrUi.Int(context["level"]) * 16 - 16)px"><span class="ep-mono">@context["sku"]</span> @context["name"]</span></MudTd>
+                <MudTd Style="text-align:right">@Q(context["required"])</MudTd>
+                <MudTd Style="text-align:right">@Q(context["onHand"])</MudTd>
+                <MudTd Style="text-align:right">@Q(context["shortage"])</MudTd>
+                <MudTd>@context["availability"]</MudTd>
+            </RowTemplate>
+        </MudTable>
+        <MudText Class="mt-2">
+            @T("Malzeme", "Material"): @Fmt.Money(AssetUi.Dec(_plan["materialCost"]), cur, Locale)
+            · @T("İşçilik", "Labour"): @Fmt.Money(AssetUi.Dec(_plan["laborCost"]), cur, Locale)
+            · @T("Genel gider", "Overhead"): @Fmt.Money(AssetUi.Dec(_plan["overheadCost"]), cur, Locale)
+            · @T("Toplam", "Total"): <b>@Fmt.Money(AssetUi.Dec(_plan["totalCost"]), cur, Locale)</b>
+        </MudText>
+    }
+}
+
+@code {
+    private sealed class BomLineRow
+    {
+        public string? VariantId { get; set; }
+        public string? Label { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal Scrap { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+    private bool _editing;
+    private bool Editing => IsNew || _editing;
+    private JsonObject? _bom;
+    private JsonObject? _plan;
+    private decimal _planQuantity = 1;
+    private string? _variantId;
+    private string? _variantLabel;
+    private string? _code;
+    private string _name = "";
+    private decimal _quantity = 1;
+    private decimal _labor;
+    private decimal _overhead;
+    private bool _isDefault;
+    private string? _notes;
+    private List<BomLineRow> _lines = [new()];
+    private bool _busy;
+
+    private string Q(JsonNode? node) => AssetUi.Dec(node).ToString("0.###");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew) return;
+        _editing = false;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        await Run(async () => _bom = await Api.GetJsonAsync($"/api/production/boms/{Id}"));
+        if (_bom == null) return;
+        _variantId = _bom["variant"]!["variantId"]?.ToString();
+        _variantLabel = $"{_bom["variant"]!["sku"]} {_bom["variant"]!["productName"]}";
+        _code = _bom["code"]?.ToString();
+        _name = _bom["name"]?.ToString() ?? "";
+        _quantity = AssetUi.Dec(_bom["quantity"]);
+        _labor = AssetUi.Dec(_bom["laborCost"]);
+        _overhead = AssetUi.Dec(_bom["overheadCost"]);
+        _isDefault = HrUi.Bool(_bom["isDefault"]);
+        _notes = _bom["notes"]?.ToString();
+        _lines = _bom["lines"]!.AsArray().Select(n => n!.AsObject()).Select(l => new BomLineRow
+        {
+            VariantId = l["variant"]!["variantId"]?.ToString(), Label = $"{l["variant"]!["sku"]} {l["variant"]!["productName"]}",
+            Quantity = AssetUi.Dec(l["quantity"]), Scrap = AssetUi.Dec(l["scrapRate"]), Notes = l["notes"]?.ToString(),
+        }).ToList();
+    }
+
+    private async Task LoadPlan() => await Run(async () => _plan = await Api.GetJsonAsync($"/api/production/boms/{Id}/plan?quantity={_planQuantity.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+
+    private IEnumerable<object> Lines() => _lines.Where(l => l.VariantId != null).Select(l => new { variantId = l.VariantId, quantity = l.Quantity, scrapRate = l.Scrap, notes = string.IsNullOrWhiteSpace(l.Notes) ? null : l.Notes });
+
+    private async Task Save()
+    {
+        _busy = true;
+        if (IsNew)
+        {
+            JsonObject? created = null;
+            var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/production/boms", new
+            {
+                variantId = _variantId, code = string.IsNullOrWhiteSpace(_code) ? null : _code, name = _name, quantity = _quantity, laborCost = _labor, overheadCost = _overhead,
+                isDefault = _isDefault, notes = _notes, lines = Lines(),
+            }), L("saved"));
+            _busy = false;
+            if (ok && created != null) Nav.NavigateTo($"/production/boms/{created["id"]}");
+            return;
+        }
+        var updated = await Run(async () => await Api.PatchAsync<JsonObject>($"/api/production/boms/{Id}", new
+        {
+            code = _code, name = _name, quantity = _quantity, laborCost = _labor, overheadCost = _overhead, isDefault = _isDefault, notes = _notes ?? "", lines = Lines(),
+        }), L("saved"));
+        _busy = false;
+        if (updated) { _editing = false; _plan = null; await Load(); }
+    }
+
+    private async Task ToggleActive()
+    {
+        _busy = true;
+        var active = !HrUi.Bool(_bom!["isActive"]);
+        if (await Run(async () => await Api.PatchAsync<JsonObject>($"/api/production/boms/{Id}", new { isActive = active }), L("saved"))) await Load();
+        _busy = false;
+    }
+
+    private async Task Remove()
+    {
+        if (!await Confirm(L("confirmDelete"))) return;
+        _busy = true;
+        if (await Run(() => Api.DeleteAsync($"/api/production/boms/{Id}"), L("deleted"))) Nav.NavigateTo("/r/bill-of-materials");
+        _busy = false;
+    }
+}

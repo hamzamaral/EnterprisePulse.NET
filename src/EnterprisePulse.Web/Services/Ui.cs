@@ -140,7 +140,7 @@ public static class Features
     [
         "Genel", "İnsan Kaynakları", "Zimmet ve Demirbaş", "Stok ve Depo", "Satın Alma", "Satış", "Cari ve Finans",
         "CRM", "Masraf ve Harcırah", "Proje Yönetimi", "Bordro", "İşe Alım", "Performans ve Eğitim",
-        "Destek", "Sözleşmeler", "Bütçe", "Araç ve Filo",
+        "Destek", "Sözleşmeler", "Bütçe", "Araç ve Filo", "Üretim", "Muhasebe",
         "Onay Süreçleri", "Organizasyon", "Sistem",
     ];
 
@@ -152,6 +152,7 @@ public static class Features
         "expenses/my", "projects/my-tasks", "projects/timesheet",
         "payroll/my", "recruitment/interviews", "performance/my", "training/my", "training/compliance",
         "support/my", "fleet/my",
+        "production/requirements", "accounting", "accounting/trial-balance", "accounting/balance-sheet", "accounting/income-statement",
     ];
 
     /// <summary>Resources of a live group that belong to a later phase.</summary>

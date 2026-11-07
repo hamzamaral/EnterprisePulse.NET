@@ -1,0 +1,120 @@
+@page "/e-invoices"
+@inherits AppPage
+
+<PageTitle>@T("e-Fatura", "e-Invoices") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudText Typo="Typo.h5" Class="ep-grow">@T("e-Fatura / e-Arşiv", "e-Invoice / e-Archive")</MudText>
+    <MudButton Variant="Variant.Outlined" Href="/r/e-invoices">@T("Tüm faturalar", "All invoices")</MudButton>
+    @if (Session.Has("einvoice:send"))
+    {
+        <MudButton Variant="Variant.Outlined" OnClick="Sync" Disabled="_busy">@T("Entegratörü çalıştır", "Run integrator")</MudButton>
+    }
+    @if (Session.Has("einvoice:update"))
+    {
+        <MudButton Variant="Variant.Outlined" OnClick="SimulateIncoming" Disabled="_busy">@T("Gelen fatura simüle et", "Simulate incoming")</MudButton>
+    }
+</div>
+@if (_summary == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@T("Gönderilmemiş", "Unsent")</MudText><MudText Typo="Typo.h6">@_summary["unsent"]</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@T("Yolda / yanıt bekleyen", "In transit / awaiting")</MudText><MudText Typo="Typo.h6">@_summary["inProgress"] / @_summary["awaitingResponse"]</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@T("GİB hatası", "GİB errors")</MudText><MudText Typo="Typo.h6">@_summary["errors"]</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.caption">@T("Yanıtlanacak / kaydedilecek gelen", "Incoming to answer / record")</MudText><MudText Typo="Typo.h6">@_summary["toRespond"] / @_summary["toRecord"]</MudText></MudPaper></MudItem>
+    </MudGrid>
+    <MudText Class="mb-3">
+        @T("Bu ay giden", "Outgoing this month"): <b>@_summary["outgoingThisMonth"]</b> (@Fmt.Money(AssetUi.Dec(_summary["outgoingAmountThisMonth"]), null, Locale))
+        · @T("Bu ay gelen", "Incoming this month"): <b>@_summary["incomingThisMonth"]</b>
+    </MudText>
+
+    <MudText Typo="Typo.h6" Class="mb-2">@T("Gönderilmemiş satış faturaları", "Unsent sales invoices")</MudText>
+    <MudTable Items="_unsent" Dense="true" Elevation="0" Outlined="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>@T("Fatura", "Invoice")</MudTh><MudTh>@T("Cari", "Partner")</MudTh><MudTh>@T("Tarih", "Date")</MudTh>
+            <MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh><MudTh>@T("Senaryo", "Profile")</MudTh><MudTh />
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><MudLink Href="@($"/sales/invoices/{context["id"]}")">@context["number"]</MudLink></MudTd>
+            <MudTd>@context["partnerTitle"]</MudTd>
+            <MudTd>@AssetUi.Day(context["invoiceDate"])</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["grandTotal"]), context["currencyCode"]?.ToString(), Locale)</MudTd>
+            <MudTd>@Meta.EnumLabel("EInvoiceProfile", context["profile"]?.ToString(), Locale)</MudTd>
+            <MudTd>@if (Session.Has("einvoice:send")) { <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="() => Send(context)" Disabled="_busy">@L("send")</MudButton> }</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>@L("noRecords")</NoRecordsContent>
+    </MudTable>
+
+    <MudText Typo="Typo.h6" Class="mb-2">@T("Ayarlar", "Settings")</MudText>
+    @if (_settings != null)
+    {
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudTextField @bind-Value="_alias" Label="@T("Gönderici posta kutusu etiketi", "Sender alias")" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:320px" Disabled="@(!Session.Has("einvoice:update"))" />
+            <MudCheckBox T="bool" @bind-Value="_autoSend" Label="@T("Faturayı otomatik gönder", "Send invoices automatically")" Disabled="@(!Session.Has("einvoice:update"))" />
+            @if (Session.Has("einvoice:update"))
+            {
+                <MudButton Variant="Variant.Outlined" OnClick="SaveSettings" Disabled="_busy">@L("save")</MudButton>
+            }
+        </MudStack>
+    }
+}
+
+@code {
+    private JsonObject? _summary;
+    private JsonObject? _settings;
+    private List<JsonObject> _unsent = [];
+    private string _alias = "";
+    private bool _autoSend;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        await Run(async () =>
+        {
+            _summary = await Api.GetJsonAsync("/api/einvoices/summary");
+            _unsent = await Api.GetAsync<List<JsonObject>>("/api/einvoices/unsent");
+            _settings = await Api.GetJsonAsync("/api/einvoices/settings");
+        });
+        _alias = _settings?["senderAlias"]?.ToString() ?? "";
+        _autoSend = HrUi.Bool(_settings?["autoSend"]);
+    }
+
+    private async Task Send(JsonObject row)
+    {
+        _busy = true;
+        JsonObject? created = null;
+        if (await Run(async () => created = await Api.PostAsync<JsonObject>("/api/einvoices", new { salesInvoiceId = row["id"]!.ToString() }), T("Fatura kuyruğa alındı", "Invoice queued")))
+            Nav.NavigateTo($"/e-invoices/{created!["id"]}");
+        _busy = false;
+    }
+
+    private async Task Sync()
+    {
+        _busy = true;
+        JsonObject? result = null;
+        if (await Run(async () => result = await Api.PostAsync<JsonObject>("/api/einvoices/sync")))
+        {
+            Snackbar.Add(T($"{result!["processed"]} fatura işlendi", $"{result["processed"]} invoices processed"), Severity.Success);
+            await Load();
+        }
+        _busy = false;
+    }
+
+    private async Task SimulateIncoming()
+    {
+        _busy = true;
+        JsonObject? created = null;
+        if (await Run(async () => created = await Api.PostAsync<JsonObject>("/api/einvoices/simulate-incoming", new { }), T("Gelen fatura oluşturuldu", "Incoming invoice created")))
+            Nav.NavigateTo($"/e-invoices/{created!["id"]}");
+        _busy = false;
+    }
+
+    private async Task SaveSettings()
+    {
+        _busy = true;
+        if (await Run(() => Api.PatchAsync<JsonObject>("/api/einvoices/settings", new { senderAlias = _alias, autoSend = _autoSend }), L("saved"))) await Load();
+        _busy = false;
+    }
+}

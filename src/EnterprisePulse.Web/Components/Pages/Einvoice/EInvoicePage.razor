@@ -1,0 +1,148 @@
+@page "/e-invoices/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@(_row?["number"]?.ToString() ?? T("e-Fatura", "e-Invoice")) · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/e-invoices" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5" Class="ep-mono">@(_row?["number"]?.ToString() ?? "…")</MudText>
+            @if (_row != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color="StatusColor">@Meta.EnumLabel("EInvoiceStatus", Status, Locale)</MudChip>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@Meta.EnumLabel("EInvoiceDirection", _row["direction"]?.ToString(), Locale)</MudChip>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@Meta.EnumLabel("EInvoiceProfile", _row["profile"]?.ToString(), Locale)</MudChip>
+            }
+        </MudStack>
+    </div>
+    @if (_row != null)
+    {
+        @if (HrUi.Bool(_row["canRespond"]) && Session.Has("einvoice:update"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="() => Respond(true)" Disabled="_busy">@T("Kabul et", "Accept")</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="() => Respond(false)" Disabled="_busy">@T("Reddet", "Reject")</MudButton>
+        }
+        @if (HrUi.Bool(_row["canRecord"]) && Session.Has("einvoice:update"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RecordPurchase" Disabled="_busy">@T("Alış faturası olarak kaydet", "Record as purchase invoice")</MudButton>
+        }
+        @if (HrUi.Bool(_row["canResend"]) && Session.Has("einvoice:send"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="Resend" Disabled="_busy">@T("Yeniden gönder", "Resend")</MudButton>
+        }
+        @if (IsOutgoingAwaitingResponse && Session.Has("einvoice:send"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="() => SimulateResponse(true)" Disabled="_busy">@T("Alıcı kabul etsin (sim.)", "Receiver accepts (sim.)")</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="() => SimulateResponse(false)" Disabled="_busy">@T("Alıcı reddetsin (sim.)", "Receiver rejects (sim.)")</MudButton>
+        }
+    }
+</div>
+@if (_row == null) { <MudProgressLinear Indeterminate="true" /> }
+else
+{
+    <MudText Class="mb-1">@_row["partnerCode"] · @_row["partnerTitle"] · @AssetUi.Day(_row["issueDate"])</MudText>
+    <MudText Class="mb-1">
+        @T("Gönderici", "Sender"): @AssetUi.Text(_row["senderAlias"]) (@AssetUi.Text(_row["senderTaxId"]))
+        · @T("Alıcı", "Receiver"): @AssetUi.Text(_row["receiverAlias"]) (@AssetUi.Text(_row["receiverTaxId"]))
+    </MudText>
+    <MudText Class="mb-1">
+        @T("GİB durumu", "GİB status"): <b>@_row["statusCode"]</b> @_row["statusMessage"]
+        @if (_row["responseDeadline"] != null) { <span> · @T("Yanıt süresi", "Response deadline"): @AssetUi.Day(_row["responseDeadline"])</span> }
+    </MudText>
+    @if (_row["responseNote"] != null) { <MudText Class="mb-1">@T("Yanıt notu", "Response note"): @_row["responseNote"]</MudText> }
+    @if (_row["salesInvoiceId"] != null)
+    {
+        <MudText Class="mb-1">@T("Satış faturası", "Sales invoice"): <MudLink Href="@($"/sales/invoices/{_row["salesInvoiceId"]}")">@_row["salesInvoiceNumber"]</MudLink></MudText>
+    }
+    @if (_row["purchaseInvoiceId"] != null)
+    {
+        <MudText Class="mb-1">@T("Alış faturası", "Purchase invoice"): <MudLink Href="@($"/purchasing/invoices/{_row["purchaseInvoiceId"]}")">@_row["purchaseInvoiceNumber"]</MudLink></MudText>
+    }
+
+    <MudTable Items='@_row["lines"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="my-3">
+        <HeaderContent>
+            <MudTh>#</MudTh><MudTh>@T("Açıklama", "Description")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Qty")</MudTh>
+            <MudTh Style="text-align:right">@T("Birim fiyat", "Unit price")</MudTh><MudTh Style="text-align:right">@T("KDV %", "VAT %")</MudTh><MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["lineNo"]</MudTd><MudTd>@context["description"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["quantity"]).ToString("0.###") @context["unitCode"]</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["unitPrice"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["vatRate"]).ToString("0.##")</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["net"]), null, Locale)</MudTd>
+        </RowTemplate>
+    </MudTable>
+    <MudText Class="mb-3">
+        @T("Mal/hizmet", "Net"): @Fmt.Money(AssetUi.Dec(_row["lineExtensionAmount"]), null, Locale)
+        · @T("KDV", "VAT"): @Fmt.Money(AssetUi.Dec(_row["taxTotal"]), null, Locale)
+        · @T("Ödenecek", "Payable"): <b>@Fmt.Money(AssetUi.Dec(_row["payableAmount"]), _row["currencyCode"]?.ToString(), Locale)</b>
+    </MudText>
+
+    <MudText Typo="Typo.h6" Class="mb-2">@T("Durum geçmişi", "Status history")</MudText>
+    <MudTable Items='@_row["events"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mb-3">
+        <HeaderContent><MudTh>@T("Zaman", "Time")</MudTh><MudTh>@T("Durum", "Status")</MudTh><MudTh>@T("Kod", "Code")</MudTh><MudTh>@T("Mesaj", "Message")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd>@AssetUi.Stamp(context["createdAt"])</MudTd>
+            <MudTd>@Meta.EnumLabel("EInvoiceStatus", context["status"]?.ToString(), Locale)</MudTd>
+            <MudTd class="ep-mono">@context["code"]</MudTd>
+            <MudTd>@context["message"]</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudExpansionPanels>
+        <MudExpansionPanel Text="UBL-TR XML"><pre style="white-space:pre-wrap;font-size:12px">@_row["xml"]</pre></MudExpansionPanel>
+    </MudExpansionPanels>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private JsonObject? _row;
+    private bool _busy;
+    private string Status => _row?["status"]?.ToString() ?? "";
+    private bool IsOutgoingAwaitingResponse => _row?["direction"]?.ToString() == "OUTGOING" && _row["profile"]?.ToString() == "TICARIFATURA" && Status == "DELIVERED";
+
+    private Color StatusColor => Status switch
+    {
+        "ACCEPTED" or "DELIVERED" => Color.Success,
+        "QUEUED" or "SENT" => Color.Warning,
+        "REJECTED" or "ERROR" or "CANCELLED" => Color.Error,
+        _ => Color.Default,
+    };
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load() => await Run(async () => _row = await Api.GetJsonAsync($"/api/einvoices/{Id}"));
+
+    private async Task Act(Func<Task> call, string? message = null)
+    {
+        _busy = true;
+        if (await Run(call, message ?? L("saved"))) await Load();
+        _busy = false;
+    }
+
+    private async Task Respond(bool accept)
+    {
+        string? note = "";
+        if (!accept)
+        {
+            note = await PromptDialog.AskAsync(Dialogs, T("Faturayı reddet", "Reject invoice"), T("Ret gerekçesi", "Reason"), required: true, color: Color.Error);
+            if (note == null) return;
+        }
+        await Act(() => Api.PostAsync($"/api/einvoices/{Id}/respond", new { action = accept ? "ACCEPT" : "REJECT", note }));
+    }
+
+    private async Task SimulateResponse(bool accept)
+    {
+        string? note = "";
+        if (!accept)
+        {
+            note = await PromptDialog.AskAsync(Dialogs, T("Alıcı reddi", "Receiver rejection"), T("Ret gerekçesi", "Reason"), required: true, color: Color.Error);
+            if (note == null) return;
+        }
+        await Act(() => Api.PostAsync($"/api/einvoices/{Id}/simulate-response", new { action = accept ? "ACCEPT" : "REJECT", note }));
+    }
+
+    private Task Resend() => Act(() => Api.PostAsync($"/api/einvoices/{Id}/resend"));
+
+    private Task RecordPurchase() => Act(() => Api.PostAsync($"/api/einvoices/{Id}/record"), T("Alış faturası oluşturuldu", "Purchase invoice created"));
+}

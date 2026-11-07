@@ -52,10 +52,12 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(app0.CorsOri
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = 429;
+    var testing = builder.Environment.IsEnvironment("Testing");
+    var globalLimit = testing ? 100_000 : 300;
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
         RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(1) }));
-    var authLimit = builder.Environment.IsEnvironment("Testing") ? 1000 : 20;
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = globalLimit, Window = TimeSpan.FromMinutes(1) }));
+    var authLimit = testing ? 1000 : 20;
     o.AddPolicy("auth", http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "anon",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authLimit, Window = TimeSpan.FromMinutes(1) }));
 });

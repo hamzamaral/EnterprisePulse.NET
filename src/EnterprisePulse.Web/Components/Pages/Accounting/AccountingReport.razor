@@ -1,0 +1,143 @@
+@page "/accounting/trial-balance"
+@page "/accounting/balance-sheet"
+@page "/accounting/income-statement"
+@inherits AppPage
+
+<PageTitle>@Title · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/accounting" />
+    <MudText Typo="Typo.h5" Class="ep-grow">@Title</MudText>
+</div>
+
+<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
+    @if (Kind == "balance-sheet")
+    {
+        <MudDatePicker @bind-Date="_to" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" />
+    }
+    else
+    {
+        <MudDatePicker @bind-Date="_from" Label="@T("Başlangıç", "From")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" />
+        <MudDatePicker @bind-Date="_to" Label="@T("Bitiş", "To")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" />
+    }
+    @if (Kind == "trial-balance")
+    {
+        <MudCheckBox T="bool" @bind-Value="_detailed" Label="@T("Alt hesaplar", "Sub-accounts")" />
+    }
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Load">@T("Getir", "Show")</MudButton>
+</MudStack>
+
+@if (_data == null) { <MudProgressLinear Indeterminate="true" /> }
+else if (Kind == "trial-balance")
+{
+    var totals = _data["totals"]!.AsObject();
+    <MudTable Items='@_data["rows"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None">
+        <HeaderContent>
+            <MudTh>@T("Hesap", "Account")</MudTh>
+            <MudTh Style="text-align:right">@T("Dönem borç", "Period debit")</MudTh><MudTh Style="text-align:right">@T("Dönem alacak", "Period credit")</MudTh>
+            <MudTh Style="text-align:right">@T("Borç", "Debit")</MudTh><MudTh Style="text-align:right">@T("Alacak", "Credit")</MudTh>
+            <MudTh Style="text-align:right">@T("Borç bakiye", "Debit bal.")</MudTh><MudTh Style="text-align:right">@T("Alacak bakiye", "Credit bal.")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="ep-mono">@context["code"]</span> @context["name"]</MudTd>
+            <MudTd Style="text-align:right">@Num(context["periodDebit"])</MudTd><MudTd Style="text-align:right">@Num(context["periodCredit"])</MudTd>
+            <MudTd Style="text-align:right">@Num(context["totalDebit"])</MudTd><MudTd Style="text-align:right">@Num(context["totalCredit"])</MudTd>
+            <MudTd Style="text-align:right">@Num(context["balanceDebit"])</MudTd><MudTd Style="text-align:right">@Num(context["balanceCredit"])</MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd><b>@L("total")</b></MudTd>
+            <MudTd Style="text-align:right"><b>@Num(totals["periodDebit"])</b></MudTd><MudTd Style="text-align:right"><b>@Num(totals["periodCredit"])</b></MudTd>
+            <MudTd Style="text-align:right"><b>@Num(totals["totalDebit"])</b></MudTd><MudTd Style="text-align:right"><b>@Num(totals["totalCredit"])</b></MudTd>
+            <MudTd Style="text-align:right"><b>@Num(totals["balanceDebit"])</b></MudTd><MudTd Style="text-align:right"><b>@Num(totals["balanceCredit"])</b></MudTd>
+        </FooterContent>
+    </MudTable>
+}
+else if (Kind == "balance-sheet")
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h6">@T("Aktif", "Assets")</MudText>
+            @Classes(_data["assets"]!.AsArray())
+            <MudText Class="mt-2"><b>@T("Aktif toplamı", "Total assets"): @Num(_data["totalAssets"])</b></MudText>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h6">@T("Pasif", "Liabilities and equity")</MudText>
+            @Classes(_data["liabilities"]!.AsArray())
+            <MudText Class="mt-2"><b>@T("Pasif toplamı", "Total liabilities"): @Num(_data["totalLiabilities"])</b></MudText>
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudTable Items='@_data["sections"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mb-3">
+        <HeaderContent><MudTh>@T("Kalem", "Item")</MudTh><MudTh Style="text-align:right">@T("Tutar", "Amount")</MudTh></HeaderContent>
+        <RowTemplate>
+            <MudTd><b>@context["name"]</b>
+                @foreach (var a in context["accounts"]!.AsArray())
+                {
+                    <div class="ml-4"><span class="ep-mono">@a!["code"]</span> @a["name"]: @Num(a["amount"])</div>
+                }
+            </MudTd>
+            <MudTd Style="text-align:right">@Num(context["total"])</MudTd>
+        </RowTemplate>
+    </MudTable>
+    <MudText>@T("Brüt satış kârı", "Gross profit"): <b>@Num(_data["grossProfit"])</b> · @T("Faaliyet kârı", "Operating profit"): <b>@Num(_data["operatingProfit"])</b></MudText>
+    <MudText>@T("Vergi öncesi kâr", "Profit before tax"): <b>@Num(_data["profitBeforeTax"])</b> · @T("Dönem net kârı", "Net profit"): <b>@Num(_data["netProfit"])</b></MudText>
+}
+
+@code {
+    private JsonObject? _data;
+    private DateTime? _from;
+    private DateTime? _to;
+    private bool _detailed;
+
+    private string Kind => Nav.Uri.Contains("balance-sheet") ? "balance-sheet" : Nav.Uri.Contains("income-statement") ? "income-statement" : "trial-balance";
+    private string Title => Kind switch
+    {
+        "balance-sheet" => T("Bilanço", "Balance sheet"),
+        "income-statement" => T("Gelir tablosu", "Income statement"),
+        _ => T("Mizan", "Trial balance"),
+    };
+
+    private string Num(JsonNode? node) => Fmt.Money(AssetUi.Dec(node), null, Locale);
+
+    private string? _loadedKind;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedKind == Kind) return;
+        _loadedKind = Kind;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _data = null;
+        var q = new List<string>();
+        if (_from != null && Kind != "balance-sheet") q.Add($"from={AssetUi.Iso(_from)}");
+        if (_to != null) q.Add(Kind == "balance-sheet" ? $"date={AssetUi.Iso(_to)}" : $"to={AssetUi.Iso(_to)}");
+        if (Kind == "trial-balance" && _detailed) q.Add("detailed=true");
+        var url = $"/api/accounting/{Kind}" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
+        await Run(async () => _data = await Api.GetJsonAsync(url));
+    }
+
+    private RenderFragment Classes(JsonArray classes) => builder =>
+    {
+        var i = 0;
+        foreach (var c in classes)
+        {
+            builder.OpenElement(i++, "div");
+            builder.AddAttribute(i++, "class", "mt-2");
+            builder.OpenElement(i++, "b");
+            builder.AddContent(i++, $"{c!["code"]} {c["name"]}: {Num(c["total"])}");
+            builder.CloseElement();
+            foreach (var g in c["groups"]!.AsArray())
+            {
+                builder.OpenElement(i++, "div");
+                builder.AddAttribute(i++, "class", "ml-3");
+                builder.AddContent(i++, $"{g!["code"]} {g["name"]}: {Num(g["total"])}");
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+        }
+    };
+}

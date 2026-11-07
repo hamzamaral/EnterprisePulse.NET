@@ -1,4 +1,5 @@
 using EnterprisePulse.Api.Infrastructure;
+using EnterprisePulse.Core.Modules.Einvoice;
 using EnterprisePulse.Core.Modules.Finance;
 using EnterprisePulse.Core.Modules.Sales;
 
@@ -27,7 +28,12 @@ public static class SalesEndpoints
         g.MapPost("/deliveries", (CreateDelivery body, DeliveryNoteService s) => s.CreateAsync(body)).RequirePermission("sales:deliver");
         g.MapGet("/deliveries/{id:guid}", (Guid id, DeliveryNoteService s) => s.GetAsync(id)).RequirePermission("sales:read");
 
-        g.MapPost("/invoices", (CreateSalesInvoice body, SalesInvoiceService s) => s.CreateAsync(body)).RequirePermission("sales:invoice");
+        g.MapPost("/invoices", async (CreateSalesInvoice body, SalesInvoiceService s, EInvoiceService einvoice) =>
+        {
+            var created = await s.CreateAsync(body);
+            await einvoice.AutoSendAsync(created.Id);
+            return created;
+        }).RequirePermission("sales:invoice");
         g.MapGet("/invoices/{id:guid}", (Guid id, SalesInvoiceService s) => s.GetAsync(id)).RequirePermission("sales:read");
         g.MapPost("/invoices/{id:guid}/cancel", (Guid id, CancelRequest body, SalesInvoiceService s) => s.CancelAsync(id, body.Text)).RequirePermission("sales:invoice");
 

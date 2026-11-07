@@ -1,0 +1,257 @@
+@page "/production/work-orders/new"
+@page "/production/work-orders/{Id:guid}"
+@inherits AppPage
+
+<PageTitle>@T("İş emri", "Work order") · EnterprisePulse</PageTitle>
+<div class="ep-page-header">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/r/work-orders" />
+    <div class="ep-grow">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@(IsNew ? T("Yeni iş emri", "New work order") : _order?["number"]?.ToString())</MudText>
+            @if (!IsNew && _order != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Status)">@Meta.EnumLabel("WorkOrderStatus", Status, Locale)</MudChip>
+                @if (HrUi.Bool(_order["order"]!["late"])) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@T("Gecikmiş", "Late")</MudChip> }
+                <MudText Typo="Typo.body2">%@HrUi.Int(_order["order"]!["progress"])</MudText>
+            }
+        </MudStack>
+    </div>
+    @if (Editing)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">@L("save")</MudButton>
+        @if (!IsNew) { <MudButton Variant="Variant.Outlined" OnClick="() => _editing = false">@L("cancel")</MudButton> }
+    }
+    else if (_order != null)
+    {
+        @if (HrUi.Bool(_order["canRelease"]) && Session.Has("production:update"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Act("release"))" Disabled="_busy">@T("Serbest bırak", "Release")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canRecord"]) && Session.Has("production:record"))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => _recording = !_recording">@T("Üretim gir", "Record output")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canEdit"]) && Session.Has("production:update"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="() => _editing = true">@L("edit")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canComplete"]) && Session.Has("production:update"))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="@(() => Act("complete", T("İş emri eksik miktarla kapatılacak.", "The order will be closed short.")))" Disabled="_busy">@T("Tamamla", "Complete")</MudButton>
+        }
+        @if (HrUi.Bool(_order["canCancel"]) && Session.Has("production:update"))
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@(() => Act("cancel", T("İş emri iptal edilecek.", "The work order will be cancelled.")))" Disabled="_busy">@T("İptal", "Cancel")</MudButton>
+        }
+    }
+</div>
+
+@if (_order == null && !IsNew) { <MudProgressLinear Indeterminate="true" /> }
+else if (Editing)
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        @if (IsNew)
+        {
+            <MudItem xs="12" sm="6"><RefPicker Resource="bill-of-materials" @bind-Value="_bomId" Label="@T("Ürün ağacı", "Bill of materials")" Required="true" Filters="_activeBoms" /></MudItem>
+        }
+        <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_quantity" Label="@T("Miktar", "Quantity")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0.001m" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_start" Label="@T("Plan başlangıç", "Planned start")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_end" Label="@T("Plan bitiş", "Planned end")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+        <MudItem xs="12" sm="4"><RefPicker Resource="warehouses" @bind-Value="_source" InitialLabel="@_sourceLabel" Label="@T("Malzeme çıkış deposu", "Source warehouse")" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><RefPicker Resource="warehouses" @bind-Value="_target" InitialLabel="@_targetLabel" Label="@T("Mamul giriş deposu", "Target warehouse")" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_reference" Label="@T("Referans", "Reference")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="@T("Notlar", "Notes")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+}
+else if (_order != null)
+{
+    var o = _order["order"]!.AsObject();
+    var cur = Session.Company?.BaseCurrency;
+    <MudText Class="mb-1">
+        <span class="ep-mono">@o["variant"]!["sku"]</span> @o["variant"]!["productName"]
+        · @T("Ürün ağacı", "BOM"): <MudLink Href="@($"/production/boms/{o["bomId"]}")">@o["bomCode"]</MudLink>
+    </MudText>
+    <MudText Class="mb-1">
+        @T("Miktar", "Quantity"): <b>@Q(o["producedQty"]) / @Q(o["quantity"])</b> @o["variant"]!["unitCode"]
+        · @AssetUi.Day(o["plannedStart"]) – @AssetUi.Day(o["plannedEnd"])
+        · @o["sourceWarehouseName"] → @o["targetWarehouseName"]
+    </MudText>
+    <MudText Class="mb-3">
+        @T("Standart birim maliyet", "Standard unit cost"): @Fmt.Money(AssetUi.Dec(_order["standardUnitCost"]), cur, Locale)
+        @if (_order["actualUnitCost"] != null) { <span> · @T("Gerçekleşen", "Actual"): <b>@Fmt.Money(AssetUi.Dec(_order["actualUnitCost"]), cur, Locale)</b></span> }
+        · @T("Eldeki stokla üretilebilir", "Buildable from stock"): @Q(_order["buildable"])
+        @if (o["reference"] != null) { <span> · @o["reference"]</span> }
+    </MudText>
+    @if (_order["notes"] != null) { <MudText Class="mb-3">@_order["notes"]</MudText> }
+
+    @if (_recording)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">@T("Üretim kaydı", "Production record")</MudText>
+            <MudGrid Spacing="2">
+                <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_recQuantity" Label="@T("Üretilen miktar", "Output quantity")" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0.001m" /></MudItem>
+                <MudItem xs="6" sm="3"><MudDatePicker @bind-Date="_recDate" Label="@T("Tarih", "Date")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" /></MudItem>
+                @if (HrUi.Bool(_order["lotTracked"]))
+                {
+                    <MudItem xs="6" sm="3"><MudTextField @bind-Value="_recLot" Label="@T("Lot no (boşsa iş emri no)", "Lot no (work order no if empty)")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="6" sm="2"><MudDatePicker @bind-Date="_recExpiry" Label="@T("SKT", "Expiry")" Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd.MM.yyyy" Culture="Fmt.Tr" Clearable="true" /></MudItem>
+                }
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_recNotes" Label="@T("Not", "Note")" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="4"><MudCheckBox T="bool" @bind-Value="_recFinish" Label="@T("Kalan miktar üretilmeyecek, iş emrini kapat", "Close the order with this record")" /></MudItem>
+            </MudGrid>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="my-2">@T("Malzemeler ürün ağacındaki standart miktarlarla kaynak depodan düşülür; mamul, malzeme + işçilik + genel gider maliyetiyle hedef depoya girer.", "Materials leave the source warehouse at the standard quantities; the product enters the target warehouse at material + labour + overhead cost.")</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RecordOutput" Disabled="_busy">@L("save")</MudButton>
+            <MudButton OnClick="() => _recording = false">@L("cancel")</MudButton>
+        </MudPaper>
+    }
+
+    <MudText Typo="Typo.h6" Class="mb-2">@T("Malzemeler", "Components")</MudText>
+    <MudTable Items='@_order["components"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>#</MudTh><MudTh>@T("Bileşen", "Component")</MudTh><MudTh Style="text-align:right">@T("Birim başına", "Per unit")</MudTh><MudTh Style="text-align:right">@T("Gerekli", "Required")</MudTh>
+            <MudTh Style="text-align:right">@T("Sarf edilen", "Consumed")</MudTh><MudTh Style="text-align:right">@T("Kalan", "Remaining")</MudTh><MudTh Style="text-align:right">@T("Kaynak depoda", "In source")</MudTh><MudTh>@T("Durum", "State")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context["lineNo"]</MudTd>
+            <MudTd><span class="ep-mono">@context["variant"]!["sku"]</span> @context["variant"]!["productName"]</MudTd>
+            <MudTd Style="text-align:right">@AssetUi.Dec(context["quantityPer"]).ToString("0.######")</MudTd>
+            <MudTd Style="text-align:right">@Q(context["requiredQty"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["consumedQty"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["remainingQty"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["onHand"])</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@(context["availability"]?.ToString() == "OK" ? Color.Success : context["availability"]?.ToString() == "PARTIAL" ? Color.Warning : Color.Error)">@context["availability"]</MudChip></MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudText Typo="Typo.h6" Class="mb-2">@T("Üretim fişleri", "Production records")</MudText>
+    <MudTable Items='@_order["records"]!.AsArray().Select(n => n!.AsObject())' Dense="true" Elevation="0" Outlined="true">
+        <HeaderContent>
+            <MudTh>@T("Fiş", "Record")</MudTh><MudTh>@T("Tarih", "Date")</MudTh><MudTh Style="text-align:right">@T("Miktar", "Quantity")</MudTh>
+            <MudTh Style="text-align:right">@T("Malzeme", "Material")</MudTh><MudTh Style="text-align:right">@T("İşçilik", "Labour")</MudTh><MudTh Style="text-align:right">@T("Genel gider", "Overhead")</MudTh>
+            <MudTh Style="text-align:right">@T("Birim maliyet", "Unit cost")</MudTh><MudTh>@T("Stok hareketleri", "Stock movements")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd class="ep-mono">@context["number"]</MudTd>
+            <MudTd>@AssetUi.Day(context["recordDate"])</MudTd>
+            <MudTd Style="text-align:right">@Q(context["quantity"])</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["materialCost"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["laborCost"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["overheadCost"]), null, Locale)</MudTd>
+            <MudTd Style="text-align:right">@Fmt.Money(AssetUi.Dec(context["unitCost"]), null, Locale)</MudTd>
+            <MudTd>
+                @if (context["issueMovementId"] != null) { <MudLink Href="@($"/inventory/movements/{context["issueMovementId"]}")">@context["issueMovementNumber"]</MudLink> }
+                <MudLink Href="@($"/inventory/movements/{context["receiptMovementId"]}")">@context["receiptMovementNumber"]</MudLink>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>@L("noRecords")</NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery] public string? BomId { get; set; }
+    [SupplyParameterFromQuery] public decimal? Quantity { get; set; }
+
+    private static readonly Dictionary<string, string> _activeBoms = new() { ["isActive"] = "true" };
+    private bool IsNew => Id == Guid.Empty;
+    private bool _editing;
+    private bool Editing => IsNew || _editing;
+    private bool _recording;
+    private JsonObject? _order;
+    private string Status => _order?["order"]?["status"]?.ToString() ?? "";
+    private string? _bomId;
+    private decimal _quantity = 1;
+    private DateTime? _start = DateTime.Today;
+    private DateTime? _end = DateTime.Today.AddDays(3);
+    private string? _source;
+    private string? _target;
+    private string? _sourceLabel;
+    private string? _targetLabel;
+    private string? _reference;
+    private string? _notes;
+    private decimal _recQuantity = 1;
+    private DateTime? _recDate = DateTime.Today;
+    private string? _recLot;
+    private DateTime? _recExpiry;
+    private string? _recNotes;
+    private bool _recFinish;
+    private bool _busy;
+
+    private string Q(JsonNode? node) => AssetUi.Dec(node).ToString("0.###");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew)
+        {
+            _bomId ??= BomId;
+            if (Quantity is > 0) _quantity = Quantity.Value;
+            return;
+        }
+        _editing = false;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        await Run(async () => _order = await Api.GetJsonAsync($"/api/production/work-orders/{Id}"));
+        if (_order == null) return;
+        var o = _order["order"]!.AsObject();
+        _quantity = AssetUi.Dec(o["quantity"]);
+        _start = DateTime.TryParse(o["plannedStart"]?.ToString(), out var s) ? s : DateTime.Today;
+        _end = DateTime.TryParse(o["plannedEnd"]?.ToString(), out var e) ? e : DateTime.Today;
+        _source = o["sourceWarehouseId"]?.ToString();
+        _target = o["targetWarehouseId"]?.ToString();
+        _sourceLabel = o["sourceWarehouseName"]?.ToString();
+        _targetLabel = o["targetWarehouseName"]?.ToString();
+        _reference = o["reference"]?.ToString();
+        _notes = _order["notes"]?.ToString();
+        _recQuantity = Math.Max(AssetUi.Dec(o["quantity"]) - AssetUi.Dec(o["producedQty"]), 0);
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        if (IsNew)
+        {
+            JsonObject? created = null;
+            var ok = await Run(async () => created = await Api.PostAsync<JsonObject>("/api/production/work-orders", new
+            {
+                bomId = _bomId, quantity = _quantity, plannedStart = AssetUi.Iso(_start), plannedEnd = AssetUi.Iso(_end), sourceWarehouseId = _source, targetWarehouseId = _target,
+                reference = _reference, notes = _notes,
+            }), L("saved"));
+            _busy = false;
+            if (ok && created != null) Nav.NavigateTo($"/production/work-orders/{created["order"]!["id"]}");
+            return;
+        }
+        var updated = await Run(async () => await Api.PatchAsync<JsonObject>($"/api/production/work-orders/{Id}", new
+        {
+            quantity = _quantity, plannedStart = AssetUi.Iso(_start), plannedEnd = AssetUi.Iso(_end), sourceWarehouseId = _source, targetWarehouseId = _target,
+            reference = _reference ?? "", notes = _notes ?? "",
+        }), L("saved"));
+        _busy = false;
+        if (updated) { _editing = false; await Load(); }
+    }
+
+    private async Task Act(string action, string? confirm = null)
+    {
+        if (confirm != null && !await Confirm(confirm)) return;
+        _busy = true;
+        if (await Run(() => Api.PostAsync($"/api/production/work-orders/{Id}/{action}"), L("saved"))) await Load();
+        _busy = false;
+    }
+
+    private async Task RecordOutput()
+    {
+        _busy = true;
+        var ok = await Run(() => Api.PostAsync($"/api/production/work-orders/{Id}/records", new
+        {
+            quantity = _recQuantity, recordDate = AssetUi.Iso(_recDate), lotNo = string.IsNullOrWhiteSpace(_recLot) ? null : _recLot,
+            expiryDate = _recExpiry == null ? null : AssetUi.Iso(_recExpiry), finish = _recFinish, notes = string.IsNullOrWhiteSpace(_recNotes) ? null : _recNotes,
+        }), T("Üretim kaydedildi", "Production recorded"));
+        _busy = false;
+        if (!ok) return;
+        _recording = false;
+        _recFinish = false;
+        await Load();
+    }
+}
