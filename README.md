@@ -37,6 +37,8 @@
 | **Destek kuyruğu:** öncelik ve durum etiketleri | **Sözleşmeler:** cari / personel, yürürlükte |
 | ![Muhasebe](docs/screenshots/accounting.png) | ![Geçmiş](docs/screenshots/audit-history.png) |
 | **Muhasebe:** kasa, alacak/borç, aylık gelir-gider | **Geçmiş:** alan etiketli okunabilir denetim |
+| ![Demirbaş detay](docs/screenshots/asset-detail.png) | |
+| **Demirbaş detay:** 3 sütunlu alan listesi, durum/koşul rozetleri, sekme kabuğu | |
 
 ## Hızlı başlangıç
 
@@ -85,7 +87,8 @@ Son koşuda: **48 birim + 27 entegrasyon = 75/75**.
 
 ## Özellikler
 
-- **Platform:** JWT giriş, şirket / şube değiştirme, kullanıcı · rol · izin, denetim kaydı (okunabilir Geçmiş sekmesi), SignalR bildirimleri, onay kutusu, ayarlar (para birimi, kur, KDV, birim, numaralandırma, onay akışları). Arka plan işleri **Hangfire + PostgreSQL** (Redis / BullMQ yok).
+- **Platform:** JWT giriş, şirket / şube değiştirme, kullanıcı · rol · izin, denetim kaydı (okunabilir Geçmiş sekmesi), SignalR bildirimleri, onay kutusu, ayarlar (para birimi, kur, KDV, birim, numaralandırma, onay akışları). Arka plan işleri **Hangfire + PostgreSQL** (Redis / BullMQ yok). Kayıt detayında 3 sütunlu tanım listesi, durum/koşul rozetleri ve sekme kabuğu.
+
 - **Gösterge paneli:** yetkiye göre İK, zimmet, stok ve finans KPI’ları; personel için kalan izin, zimmetler, masraflar ve görevler.
 - **İnsan Kaynakları:** personel, departman, pozisyon, organizasyon şeması, izin talebi ve çok adımlı onay, **İzinlerim** / **Mesaim**, puantaj, vardiya planı.
 - **Zimmet ve Demirbaş:** demirbaş kartı, QR etiket, zimmet / iade / devir, amortisman, sayım, **Zimmetlerim**.

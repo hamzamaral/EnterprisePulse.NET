@@ -1,16 +1,13 @@
 @inherits AppPage
 
-<MudGrid Spacing="2">
-    @foreach (var f in Fields)
-    {
-        <MudItem xs="12" sm="@(Wide(f) ? 12 : 6)" md="@(Wide(f) ? 12 : Columns)">
-            @if (Editable(f))
-            {
-                <FieldInput Field="f" Data="Data" Labels="Labels" Disabled="Disabled" OnChange="Changed" />
-            }
-            else
-            {
-                <MudField Label="@T(f.Label)" Variant="Variant.Text" Margin="Margin.Dense">
+@if (ReadOnly)
+{
+    <div class="ep-dl">
+        @foreach (var f in Fields)
+        {
+            <div class="ep-dl-item @(Wide(f) ? "ep-dl-wide" : null)">
+                <div class="ep-dl-label">@T(f.Label)</div>
+                <div class="ep-dl-value">
                     @if (f.Kind == "enum" && Data[f.Name] != null)
                     {
                         <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Data[f.Name]?.ToString())">@Fmt.Value(f, Data[f.Name], Meta, Locale)</MudChip>
@@ -23,11 +20,42 @@
                     {
                         @(Fmt.Value(f, Data[f.Name], Meta, Locale, Labels) is { Length: > 0 } text ? text : "—")
                     }
-                </MudField>
-            }
-        </MudItem>
-    }
-</MudGrid>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <MudGrid Spacing="2">
+        @foreach (var f in Fields)
+        {
+            <MudItem xs="12" sm="@(Wide(f) ? 12 : 6)" md="@(Wide(f) ? 12 : Columns)">
+                @if (Editable(f))
+                {
+                    <FieldInput Field="f" Data="Data" Labels="Labels" Disabled="Disabled" OnChange="Changed" />
+                }
+                else
+                {
+                    <MudField Label="@T(f.Label)" Variant="Variant.Text" Margin="Margin.Dense">
+                        @if (f.Kind == "enum" && Data[f.Name] != null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Fmt.StatusColor(Data[f.Name]?.ToString())">@Fmt.Value(f, Data[f.Name], Meta, Locale)</MudChip>
+                        }
+                        else if (f.Kind == "json")
+                        {
+                            <div class="ep-json">@Data[f.Name]?.ToJsonString(new JsonSerializerOptions { WriteIndented = true })</div>
+                        }
+                        else
+                        {
+                            @(Fmt.Value(f, Data[f.Name], Meta, Locale, Labels) is { Length: > 0 } text ? text : "—")
+                        }
+                    </MudField>
+                }
+            </MudItem>
+        }
+    </MudGrid>
+}
 
 @code {
     [Parameter, EditorRequired] public ResourceMeta Resource { get; set; } = null!;
