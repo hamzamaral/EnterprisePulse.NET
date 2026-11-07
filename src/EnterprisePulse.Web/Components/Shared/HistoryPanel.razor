@@ -1,3 +1,5 @@
+@using System.Globalization
+@using System.Text.Json
 @inherits AppPage
 
 <MudSimpleTable Dense="true" Outlined="true">
@@ -13,13 +15,13 @@
         @foreach (var row in _rows)
         {
             <tr>
-                <td style="white-space:nowrap">@Fmt.DateTime(row["createdAt"]!.GetValue<DateTime>())</td>
-                <td>@row["userEmail"]</td>
-                <td><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@row["action"]</MudChip></td>
+                <td style="white-space:nowrap">@Fmt.DateTime(row["createdAt"]?.GetValue<DateTime>())</td>
+                <td>@(row["userEmail"]?.ToString() is { Length: > 0 } email ? email : "—")</td>
+                <td><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@ActionLabel(row["action"]?.ToString())</MudChip></td>
                 <td>
-                    @foreach (var (key, value) in (row["newValues"] as JsonObject ?? []))
+                    @foreach (var line in ChangeLines(row))
                     {
-                        <div class="ep-mono"><b>@key</b>: @(row["oldValues"]?[key]?.ToJsonString() ?? "∅") → @(value?.ToJsonString() ?? "∅")</div>
+                        <div><b>@line.Label</b>: @line.Old → @line.New</div>
                     }
                 </td>
             </tr>
@@ -36,11 +38,94 @@
     [Parameter, EditorRequired] public string EntityId { get; set; } = "";
 
     private List<JsonObject> _rows = [];
+    private ResourceMeta? _resource;
 
-    protected override async Task OnParametersSetAsync() =>
+    protected override async Task OnParametersSetAsync()
+    {
+        _resource = Meta.Resources.FirstOrDefault(r => r.Model == EntityType);
         await Run(async () =>
         {
             var res = await Api.GetJsonAsync($"/api/r/audit-logs?entityType={EntityType}&entityId={EntityId}&sort=createdAt&order=desc&pageSize=100");
             _rows = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
         });
+    }
+
+    private string ActionLabel(string? action) => action switch
+    {
+        "create" => T("Oluşturuldu", "Created"),
+        "update" => T("Güncellendi", "Updated"),
+        "delete" => T("Silindi", "Deleted"),
+        _ => action ?? "—",
+    };
+
+    private IEnumerable<(string Label, string Old, string New)> ChangeLines(JsonObject row)
+    {
+        var neu = row["newValues"] as JsonObject ?? [];
+        var old = row["oldValues"] as JsonObject ?? [];
+        var keys = (neu.Count > 0 ? neu.Select(kv => kv.Key) : old.Select(kv => kv.Key)).Distinct();
+        var create = row["action"]?.ToString() == "create";
+        foreach (var key in keys)
+        {
+            var field = _resource?.Field(key);
+            if (field?.IsSystem == true) continue;
+            if (key is "id" or "companyId") continue;
+            if (create && field?.Kind is "uuid" or "json") continue;
+            var label = field?.Label.For(Locale) ?? key;
+            var from = Format(field, old[key]);
+            var to = Format(field, neu[key]);
+            if (from == "—" && to == "—") continue;
+            yield return (label, from, to);
+        }
+    }
+
+    private string Format(FieldMeta? field, JsonNode? node)
+    {
+        if (node is null || node.GetValueKind() == JsonValueKind.Null) return "—";
+        if (field?.Kind == "enum" && field.Values is { Count: > 0 } values)
+        {
+            var name = EnumName(node, values);
+            if (name != null) return Meta.EnumLabel(field.Enum, name, Locale);
+        }
+        if (field != null)
+        {
+            if (field.Kind is "date" or "datetime" or "bool" or "decimal" or "enum")
+                return Fmt.Value(field, node, Meta, Locale);
+            if (node is JsonValue v && v.TryGetValue(out string? s)) return string.IsNullOrWhiteSpace(s) ? "—" : s;
+            if (node is JsonValue n)
+            {
+                if (n.TryGetValue(out bool b)) return Texts.Get(b ? "yes" : "no", Locale);
+                if (n.TryGetValue(out decimal d)) return d.ToString(field.Scale is > 2 ? "N" + field.Scale : "N2", Fmt.Culture(Locale));
+                if (n.TryGetValue(out int i)) return i.ToString(Fmt.Culture(Locale));
+                if (n.TryGetValue(out long l)) return l.ToString(Fmt.Culture(Locale));
+            }
+        }
+        return Plain(node);
+    }
+
+    private static string? EnumName(JsonNode node, List<string> values)
+    {
+        if (node is not JsonValue v) return null;
+        if (v.TryGetValue(out string? s) && !string.IsNullOrEmpty(s))
+        {
+            if (int.TryParse(s, out var asInt) && asInt >= 0 && asInt < values.Count) return values[asInt];
+            return s;
+        }
+        if (v.TryGetValue(out int i) && i >= 0 && i < values.Count) return values[i];
+        if (v.TryGetValue(out long l) && l >= 0 && l < values.Count) return values[(int)l];
+        return null;
+    }
+
+    private static string Plain(JsonNode node)
+    {
+        if (node is JsonValue v)
+        {
+            if (v.TryGetValue(out string? s)) return string.IsNullOrWhiteSpace(s) ? "—" : s;
+            if (v.TryGetValue(out bool b)) return b ? "true" : "false";
+            if (v.TryGetValue(out decimal d)) return d.ToString(CultureInfo.InvariantCulture);
+            if (v.TryGetValue(out int i)) return i.ToString(CultureInfo.InvariantCulture);
+            if (v.TryGetValue(out long l)) return l.ToString(CultureInfo.InvariantCulture);
+            return v.ToString();
+        }
+        return node.ToJsonString();
+    }
 }

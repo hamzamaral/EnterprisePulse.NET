@@ -79,7 +79,8 @@
         _loading = true;
         await Run(async () =>
         {
-            _balances = await Api.GetAsync<JsonArray>($"/api/hr/leave-balances?year={DateTime.Today.Year}");
+            var employeeId = Session.Me!.User.EmployeeId;
+            _balances = await Api.GetAsync<JsonArray>($"/api/hr/leave-balances?year={DateTime.Today.Year}&employeeId={employeeId}");
             var res = await Api.GetJsonAsync("/api/hr/leave-requests?mine=true&pageSize=200");
             _requests = res["data"]!.AsArray().Select(n => n!.AsObject()).ToList();
         });
